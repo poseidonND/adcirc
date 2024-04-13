@@ -84,7 +84,8 @@ C-----------------------------------------------------------------------
      &   StatPartWetFix, How2FixStatPartWet, cgwce_hdp, ifnl_hdp, 
      &   CAliDisp, IFSFM, usingDynamicWaterLevelCorrection,slim,windlim,
      &   directvelWD,useHF,Limit_WaveStressGrad, directvelWD,useHF, 
-     &   WarnVel
+     &   WarnVel,TideFacUpdateInt
+
 
 #if defined CSWAN || defined ADCSWAN
      &   , SWAN_OutputHS, SWAN_OutputDIR,
@@ -227,8 +228,8 @@ C.... DMW
 #endif
 !JLW: adding subgrid namelist
       NAMELIST /subgridControl/ subgridFilename, level0, level1
-
-      NAMELIST /WindGrib2NetCdf/ read_NWS14_NetCdf_using_core_0
+      
+      NAMELIST /tidefacControl/ TideFacUpdateInt
 
       CHARACTER(len=160) :: origLine     ! raw line of input from fort.15
       CHARACTER(len=200) :: modifiedLine ! converted to namelist
@@ -565,6 +566,13 @@ C.... DMW
       write(scratchMessage,*) "level0=",level0
       call logMessage(ECHO,trim(scratchMessage))
       write(scratchMessage,*) "level1=",level1
+      call logMessage(ECHO,trim(scratchMessage))
+      rewind(15)
+
+      namelistSpecifier = 'tidefacControl'
+      read(unit=15,nml=tidefacControl,iostat=IOS)
+      call logNameListReadStatus(namelistSpecifier,ios)
+      write(scratchMessage,'(a,e15.8)') "TideFacUpdateInt=",TideFacUpdateInt
       call logMessage(ECHO,trim(scratchMessage))
       rewind(15)
 

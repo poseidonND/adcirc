@@ -322,6 +322,9 @@ Casey 180318: Added NWS=13
       logical :: foundInundationOutputControlNamelist = .false.
       logical :: inundationOutput = .false.
       real(8) :: inunThresh = 0.6d0
+      
+      logical :: foundTidefacControlNamelist = .false.
+      real(8) :: TideFacUpdateInt = -9999999.d0 ! Interval for updating tidal factor in days
 
       ! jgf: added support for water level correction
       logical :: foundCorrectionControlNamelist = .false. 

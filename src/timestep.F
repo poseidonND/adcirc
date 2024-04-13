@@ -82,7 +82,7 @@ C
      &    BCFLAG_LNM, usingDynamicWaterLevelCorrection,
      &    dynamicWaterLevelCorrection1, dynamicWaterLevelCorrection2, L_N, TKM, 
      &    WarnElevDump, nodes_lg, NT, NM, NB, DEBUG, NHOUTONCE,
-     &    Limit_WaveStressGrad,
+     &    Limit_WaveStressGrad,TFCOUNT,TideFacUpdateInt
      &    earlyterminate, IT_foundNaN, WarnVel, Flag_VelError
       USE ADC_CONSTANTS, ONLY: rhoWat0, sigT0, waveWindMultiplier,
      &                         WaveStressGrad_Cap 
@@ -225,7 +225,35 @@ C.......
 #if defined(TIMESTEP_TRACE) || defined(ALL_TRACE)
       call allMessage(DEBUG,"Enter.")
 #endif
+      IF (MOD(IT*DTDP/86400.d0,TideFacUpdateInt).EQ.0) THEN
 
+         TFCOUNT = TFCOUNT + 1
+         write(fn,"(A9,I3.3,A3)") 'tide_fac_',TFCOUNT,'.in'
+
+#ifdef CMPI
+         OPEN(789,FILE=TRIM(fn))
+#else
+         OPEN(789,FILE=TRIM(fn))
+#endif
+         DO I=1,NTIF
+            READ(789,*)  FFT(I),FACET(I)
+         ENDDO
+         !if (nfreq.ne.0) then
+         !   DO I=1+nf,nfreq+nf
+         !       HAFF(I) = FFT(I)
+         !       HAFACE(I) = FACET(I)
+         !   ENDDO
+         !endif
+         DO I=1,NTIF
+            FACET(I)=FACET(I)*DEG2RAD
+         END DO
+#ifdef CMPI
+         IF (MYPROC .EQ. 0) THEN
+           WRITE(*,*) 'REASSIGNED ALL ',NTIF,' CONSTITUENTS'
+         ENDIF
+#endif
+         CLOSE(789)
+      ENDIF
 
 C    kmd48.33bc - changed for timestep changes in the hot start files
 C     jgf46.21 Combined flux/radiation b.c. for rivers

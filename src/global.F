@@ -102,6 +102,8 @@ C     Variables related to hotstarting.
       ! iLump=0 for consistent mass matrix
       ! iLump=1 for lumped mass matrix 
       integer :: ilump 
+      integer :: tfcount ! Count how many times the tidal factors are recomputed
+
 
       real(8),allocatable,target ::   mom_lv_x(:)
       real(8),allocatable ::   mom_lv_y(:)
@@ -812,6 +814,9 @@ C....  Set these controls to off by default. (Large value on slim effectively as
       logical :: windlim = .false.
       
       logical :: directvelWD = .false.,  useHF = .false.
+      
+C.... DMW 202311 Add in interval for TideFac Updating
+      real(8) :: TideFacUpdateInt = -9999999.d0 
 C.... DMW
 C
 C     jgf49.44: Log levels, in order from largest amount of log messages

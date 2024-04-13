@@ -563,6 +563,7 @@ C.... DMW
       namelist /subgridControl/ subgridFilename, level0, level1
       ! jgf52.08.02 : For inundation output files.
       namelist /inundationOutputControl/ inundationOutput, inunThresh
+      namelist /tidefacControl/ TideFacUpdateInt ! Interval for updating tidal factor in days
 
 C
 C.....tcm v52.30.01 added for Smag_Control
@@ -735,6 +736,17 @@ Casey 180318: Added NWS=13
       else
          call logMessage(INFO,
      &         'The inundationOutput namelist was not found.')
+      endif
+      rewind(15)  !Return to the top of the fort.15 file
+      
+      read(unit=15,nml=tidefacControl,iostat=ios)
+      if ( ios.ge.0) then
+         foundTidefacControlNamelist = .true.
+         call logMessage(INFO,
+     &         'The tidefacControl namelist was found.')
+      else
+         call logMessage(INFO,
+     &         'The tidefacControl namelist was not found.')
       endif
       rewind(15)  !Return to the top of the fort.15 file
       !

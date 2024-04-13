@@ -407,7 +407,8 @@ C******************************************************************************
       SUBROUTINE ADCIRC_Run(NTIME_STP)
       USE SIZES, ONLY : mnproc, mnwproc, mnwproh, myproc
       USE GLOBAL, ONLY : iTime, DEBUG, INFO, setMessageSource, allMessage,
-     &   unsetMessageSource, statim, dtdp, screenunit, logMessage, earlyterminate
+     &   unsetMessageSource, statim, dtdp, screenunit, logMessage, 
+     &   earlyterminate, TFCOUNT
 #ifdef CMPI
       USE WRITER, ONLY : writer_main, writer_pause, sendLabelInfoToWriters
       USE HSWRITER, ONLY : hswriter_main, hswriter_pause
@@ -452,6 +453,7 @@ C
       ENDIF
 C
       call allMessage(INFO,"Begin timestepping.")
+      TFCOUNT = 0
       DO 100 ITIME=ITIME_BGN,ITIME_END
         CALL TIMESTEP(ITIME,TimeLoc)
 C

@@ -2358,6 +2358,12 @@ C....    DMW
      &       '&inundationOutputControl inundationOutput=',
      &       inundationOutput,' inunThresh=',inunThresh," /"
          endif
+        
+         if (foundTidefacControlNamelist) then
+            write(15,'(a,f15.8,a)')
+     &       '&tidefacControl TideFacUpdateInt=',
+     &       TideFacUpdateInt," /"
+         endif
 
 c...     tcm v52.30.01 additions for Smag_Control Namelist
          IF (FOUND_SMAG_NML) then  !If there was a namelist in the original fort.15 put it in the decomp 15's
