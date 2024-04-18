@@ -29,7 +29,7 @@
       module subgrid
       use global, only: nodecode, nnodecode
      &   , eta2, tk, tkm, nolifa, tkm
-     &   , H0, ifnlfa, uu1, vv1, ncchange
+     &   , H0, ifnlfa, uu1, vv1, ncchange, DEBUG
       use mesh, only: ne, np, nm, totalArea, mju, areas, dp
 #ifdef ADCNETCDF      
       use netcdf_error, only: check_err

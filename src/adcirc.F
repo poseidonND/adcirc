@@ -455,6 +455,7 @@ C
       call allMessage(INFO,"Begin timestepping.")
       TFCOUNT = 0
       DO 100 ITIME=ITIME_BGN,ITIME_END
+
         CALL TIMESTEP(ITIME,TimeLoc)
 C
 #ifdef CSWAN
@@ -464,7 +465,7 @@ C             to then call the SWAN time-stepping subroutine.
           CALL PADCSWAN_RUN(ITIME)
         ENDIF
 #endif
-        if ( earlyterminate.ne.0 ) then 
+        if ( earlyterminate.ne.0 ) then
            call writeOutput2D(ITIME_END,TimeLoc) 
            exit
         else

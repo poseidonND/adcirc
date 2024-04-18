@@ -84,7 +84,7 @@ C-----------------------------------------------------------------------
      &   StatPartWetFix, How2FixStatPartWet, cgwce_hdp, ifnl_hdp, 
      &   CAliDisp, IFSFM, usingDynamicWaterLevelCorrection,slim,windlim,
      &   directvelWD,useHF,Limit_WaveStressGrad, directvelWD,useHF, 
-     &   WarnVel,TideFacUpdateInt
+     &   WarnVel,TideFacUpdateInt,tipIntInc
 
 
 #if defined CSWAN || defined ADCSWAN
@@ -228,8 +228,10 @@ C.... DMW
 #endif
 !JLW: adding subgrid namelist
       NAMELIST /subgridControl/ subgridFilename, level0, level1
-      
+      NAMELIST /WindGrib2NetCdf/ read_NWS14_NetCdf_using_core_0 
       NAMELIST /tidefacControl/ TideFacUpdateInt
+      !dmw 202404
+      NAMELIST /tipInterpolate/ tipIntInc
 
       CHARACTER(len=160) :: origLine     ! raw line of input from fort.15
       CHARACTER(len=200) :: modifiedLine ! converted to namelist
@@ -576,6 +578,12 @@ C.... DMW
       call logMessage(ECHO,trim(scratchMessage))
       rewind(15)
 
+      namelistSpecifier = 'tipInterpolate'
+      read(unit=15,nml=tipInterpolate,iostat=IOS)
+      call logNameListReadStatus(namelistSpecifier,ios)
+      write(scratchMessage,'(a,e15.8)') "tipIntInc=",tipIntInc
+      call logMessage(ECHO,trim(scratchMessage))
+      rewind(15)
 c...  tcm v52.30.01 Addtions for Using Smagorinsky Namelist Options
 c...  read through the fort.15 file for the namelist (Smag_Control) for
 c...  the namelist options for using Smagorinsky.  This namelist must be at the

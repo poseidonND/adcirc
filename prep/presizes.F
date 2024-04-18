@@ -117,7 +117,8 @@ Casey 121019: Added multiplication factor to be used before sending winds to cou
       USE GLOBAL, ONLY :
      &    USE_TVW,TVW_FILE,NOUT_TVW,TOUTS_TVW,TOUTF_TVW,NSPOOL_TVW,
      &    outputWindDrag,slim,windlim,directvelWD,useHF,
-     &    Limit_WaveStressGrad  !tcm v56 2024: added
+     &    Limit_WaveStressGrad,  !tcm v56 2024: added
+     &    tipIntInc !dmw 202404
 #if defined CSWAN || defined ADCSWAN
      &   ,SWAN_OutputHS,SWAN_OutputDIR,SWAN_OutputTM01,
      &    SWAN_OutputTPS,SWAN_OutputWIND,SWAN_OutputTM02,

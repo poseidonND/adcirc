@@ -384,6 +384,9 @@ C- DMW
       REAL(8),ALLOCATABLE,TARGET ::   DUU1(:),DUV1(:),DVV1(:)
       REAL(8),ALLOCATABLE,TARGET ::   BSX1(:),BSY1(:)
       REAL(8),ALLOCATABLE ::   TIP1(:),TIP2(:)
+C     dmw202404 Add variables for interpolating the tidal potential fn
+      REAL(8),ALLOCATABLE ::   TIP2INT(:,:),TINT(:),DENOM(:) 
+      INTEGER INTINC
       REAL(8),ALLOCATABLE ::   L_N(:,:)    ! WJP The array for TIP multiplier
       REAL(8),ALLOCATABLE ::   SALTAMP(:,:),SALTPHA(:,:)
       REAL(8),ALLOCATABLE ::   OBCCOEF(:,:),COEF(:,:)
@@ -817,7 +820,8 @@ C....  Set these controls to off by default. (Large value on slim effectively as
       
 C.... DMW 202311 Add in interval for TideFac Updating
       real(8) :: TideFacUpdateInt = -9999999.d0 
-C.... DMW
+C.... DMW 202404 Add interval for interpolating tidal potential function
+      real(8) :: tipIntInc = 0.d0
 C
 C     jgf49.44: Log levels, in order from largest amount of log messages
 C     written (DEBUG) to fewest log messages written (ERROR). Compared
@@ -1305,6 +1309,7 @@ C
 
       IF ( CTIP ) THEN
          ALLOCATE( TIP1(MNP),TIP2(MNP),L_N(0:2,MNP))
+         ALLOCATE( TIP2INT(3,MNP),TINT(3),DENOM(3))
       ENDIF
 C
       RETURN

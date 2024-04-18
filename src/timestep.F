@@ -82,10 +82,11 @@ C
      &    BCFLAG_LNM, usingDynamicWaterLevelCorrection,
      &    dynamicWaterLevelCorrection1, dynamicWaterLevelCorrection2, L_N, TKM, 
      &    WarnElevDump, nodes_lg, NT, NM, NB, DEBUG, NHOUTONCE,
-     &    Limit_WaveStressGrad,TFCOUNT,TideFacUpdateInt
-     &    earlyterminate, IT_foundNaN, WarnVel, Flag_VelError
+     &    Limit_WaveStressGrad,TFCOUNT,TideFacUpdateInt,
+     &    earlyterminate, IT_foundNaN, WarnVel, Flag_VelError, 
+     &    TIP2INT,TINT,DENOM,INTINC,tipIntInc
       USE ADC_CONSTANTS, ONLY: rhoWat0, sigT0, waveWindMultiplier,
-     &                         WaveStressGrad_Cap 
+     &                         WaveStressGrad_Cap,DEG2RAD 
      
       USE GWCE, ONLY : solveGWCE, numitr
       USE MOMENTUM, ONLY : solveMomentumEq
@@ -157,7 +158,7 @@ c. RJW merged 08/26/2008 from Casey 071219:Added the following variables for 3D 
       INTEGER IE, I, J, K, JJ                  !local loop counters
       INTEGER NM1, NM2, NM3
       INTEGER NC1, NC2, NC3, NCEle
-      INTEGER NCyc, NA
+      INTEGER NCyc(3), NA
       INTEGER :: itest
       INTEGER :: kemax
       INTEGER :: kvmax
@@ -170,7 +171,7 @@ c. RJW merged 08/26/2008 from Casey 071219:Added the following variables for 3D 
       INTEGER :: warnElevExceeded
       logical, save ::  EtaDisc_Fill = .TRUE.
 
-      REAL(8) ArgT, ArgTP, ArgSAlt
+      REAL(8) ArgT(3), ArgTP, ArgSAlt
       REAL(8) CCSFEA
       REAL(8) ElMax
       REAL(8) PIPE_FLUX
@@ -192,6 +193,7 @@ c. RJW merged 08/26/2008 from Casey 071219:Added the following variables for 3D 
       REAL(8) runperccomplete
 C   kmd48.33bc - added in the heat flux variables
       CHARACTER(80) :: CDUM80
+      CHARACTER(15) :: fn
       INTEGER :: NumofBCNode
       REAL(8), SAVE :: StaTimHS, RefTimHS
       INTEGER :: NOD
@@ -212,6 +214,7 @@ C....... DW
 C.......
       LOGICAL ISFRONT
       LOGICAL foundNaN
+      REAL(8) PHI(3)
       
       IF (IT .EQ. 1) THEN
 !.......DMW202401 On first timestep of a cold start, find H2 at start of timestepper since ETA2 = ETA1
@@ -887,36 +890,129 @@ C...
 C...  WJP 02.21.2018 Rewriting for general formula for all species,
 C     cleaner code, and correct identification of 0,1,2 or higher species
       IF(CTIP) THEN
-         TIPLOOP: DO J=1,NTIF
-            IF (PERT(J).EQ.0.) THEN
-               NCYC=0
-            ELSE
+         IF (IT.EQ.ITIME_BGN) INTINC = FLOOR(tipIntInc/DTDP)
+         IF (INTINC.NE.0)THEN
+            IF ((IT.EQ.ITIME_BGN).OR.(MOD(IT-ITIME_BGN,2*INTINC).EQ.0)) THEN
+               WRITE(16,*) 'dmw202404 THIS CODE IS NOW COMPUTING A NEW SET OF POINTS FOR INTERP OF TIDE POTENTIAL FORCING'
+               WRITE(16,*) 'IT = ',IT
+               IF (IT.NE.ITIME_BGN) THEN
+                  DO I =1,NP
+                     TIP2INT(1,I) = TIP2INT(3,I)
+                  ENDDO
+               ENDIF
+               TIPLOOP1: DO J=1,NTIF
+                  IF (PERT(J).EQ.0.) THEN
+                     NCYC(1)=0
+                     NCYC(2)=0
+                     NCYC(3)=0
+                  ELSE
 #ifdef IBM
-               NCYC=INT(timeh/PERT(J),KIND(0.0d0))
+                     NCYC(1)=INT(timeh/PERT(J),KIND(0.0d0))
+                     NCYC(2)=INT((timeh+INTINC*DTDP)/PERT(J),KIND(0.0d0))
+                     NCYC(3)=INT((timeh+INTINC*2.d0*DTDP)/PERT(J),KIND(0.0d0))
 #else
-               NCYC=INT(timeh/PERT(J))
+                     NCYC(1)=INT(timeh/PERT(J))
+                     NCYC(2)=INT((timeh+INTINC*DTDP)/PERT(J))
+                     NCYC(3)=INT((timeh+INTINC*2.d0*DTDP)/PERT(J))
 #endif
-            ENDIF
+                  ENDIF
+C                 WJP: We actually want to compare against diurnal and get 0,1,2
+C                 or higher species (was opposite beforehand)
+#ifdef IBM
+                  NA = MIN(NINT(AMIGT(J)/7d-5,KIND(0.0d0)),2)
+#else
+                  NA = MIN(NINT(AMIGT(J)/7d-5),2)
+#endif
+                  TPMUL=ETRF(J)*TPK(J)*FFT(J)
+                  SALTMUL=FFT(J)
+                  ARGT(1)=AMIGT(J)*(timeh-NCYC(1)*PERT(J))+FACET(J)
+                  ARGT(2)=AMIGT(J)*(timeh+INTINC*DTDP-NCYC(2)*PERT(J))+FACET(J)
+                  ARGT(3)=AMIGT(J)*(timeh+INTINC*2.d0*DTDP-NCYC(3)*PERT(J))+FACET(J)
+                  IF (IT.EQ.ITIME_BGN) THEN 
+                     DO K = 1,3
+C                       WJP: Rewritten so that we have a general formula for all
+C                       species
+                        IF (J.EQ.1) THEN
+                           DO I = 1,NP
+                              TIP2INT(K,I) = 0.d0
+                           ENDDO
+                        ENDIF
+                        DO I = 1,NP
+                           ARGTP   = ARGT(K) + NA*SLAM(I)
+                           ARGSALT = ARGT(K) - SALTPHA(J,I)
+                           TIP2INT(K,I) = TIP2INT(K,I) + TPMUL * L_N(NA,I) * COS(ARGTP)
+     &                              + SALTMUL * SALTAMP(J,I) * COS(ARGSALT)
+                        ENDDO
+                     ENDDO
+                  ELSE
+                     DO K = 2,3
+C                       WJP: Rewritten so that we have a general formula for all
+C                       species
+                        IF (J.EQ.1) THEN
+                           DO I = 1,NP
+                              TIP2INT(K,I) = 0.d0
+                           ENDDO
+                        ENDIF
+                        DO I = 1,NP
+                           ARGTP   = ARGT(K) + NA*SLAM(I)
+                           ARGSALT = ARGT(K) - SALTPHA(J,I)
+                           TIP2INT(K,I) = TIP2INT(K,I) + TPMUL * L_N(NA,I) * COS(ARGTP)
+     &                              + SALTMUL * SALTAMP(J,I) * COS(ARGSALT)
+                        ENDDO
+                     ENDDO
+                  ENDIF
+               ENDDO TIPLOOP1
 
-            ARGT=AMIGT(J)*(timeh-NCYC*PERT(J))+FACET(J)
-            TPMUL=RampTip*ETRF(J)*TPK(J)*FFT(J)
-            SALTMUL=RampTip*FFT(J)
-C           WJP: We actually want to compare against diurnal and get 0,1,2
-C           or higher species (was opposite beforehand)
-#ifdef IBM
-            NA = MIN(NINT(AMIGT(J)/7d-5,KIND(0.0d0)),2)
-#else
-            NA = MIN(NINT(AMIGT(J)/7d-5),2)
-#endif
-C           WJP: Rewritten so that we have a general formula for all
-C           species
+               TINT(1) = timeh
+               TINT(2) = timeh+INTINC*DTDP
+               TINT(3) = timeh+INTINC*2.d0*DTDP
+               DENOM(1) = (TINT(1) - TINT(2))*(TINT(1) - TINT(3))
+               DENOM(2) = (TINT(2) - TINT(1))*(TINT(2) - TINT(3))
+               DENOM(3) = (TINT(3) - TINT(1))*(TINT(3) - TINT(2))
+            ENDIF
+            IF (DENOM(1) .EQ. 0.d0) DENOM(1) = 1d-16
+            IF (DENOM(2) .EQ. 0.d0) DENOM(2) = 1d-16
+            IF (DENOM(3) .EQ. 0.d0) DENOM(3) = 1d-16
+
+            PHI(1) = (timeh - TINT(2))*(timeh - TINT(3))/DENOM(1)
+            PHI(2) = (timeh - TINT(1))*(timeh - TINT(3))/DENOM(2)
+            PHI(3) = (timeh - TINT(1))*(timeh - TINT(2))/DENOM(3)
             DO I = 1,NP
-                ARGTP   = ARGT + NA*SLAM(I)
-                ARGSALT = ARGT - SALTPHA(J,I)
-                TIP2(I) = TIP2(I) + TPMUL * L_N(NA,I) * COS(ARGTP)
-     &                  + SALTMUL * SALTAMP(J,I) * COS(ARGSALT)
+               TIP2(I) = RampTip*(TIP2INT(1,I)*PHI(1) + TIP2INT(2,I)*PHI(2) + TIP2INT(3,I)*PHI(3))
             ENDDO
-         ENDDO TIPLOOP
+         ELSE
+            
+            TIPLOOP2: DO J=1,NTIF
+               IF (PERT(J).EQ.0.) THEN
+                  NCYC(1)=0
+               ELSE
+#ifdef IBM
+                  NCYC(1)=INT(timeh/PERT(J),KIND(0.0d0))
+#else
+                  NCYC(1)=INT(timeh/PERT(J))
+#endif
+               ENDIF
+
+               ARGT(1)=AMIGT(J)*(timeh-NCYC(1)*PERT(J))+FACET(J)
+               TPMUL=RampTip*ETRF(J)*TPK(J)*FFT(J)
+               SALTMUL=RampTip*FFT(J)
+C              WJP: We actually want to compare against diurnal and get 0,1,2
+C              or higher species (was opposite beforehand)
+#ifdef IBM
+               NA = MIN(NINT(AMIGT(J)/7d-5,KIND(0.0d0)),2)
+#else
+               NA = MIN(NINT(AMIGT(J)/7d-5),2)
+#endif
+C              WJP: Rewritten so that we have a general formula for all
+C              species
+               DO I = 1,NP
+                  ARGTP   = ARGT(1) + NA*SLAM(I)
+                  ARGSALT = ARGT(1) - SALTPHA(J,I)
+                  TIP2(I) = TIP2(I) + TPMUL * L_N(NA,I) * COS(ARGTP)
+     &                    + SALTMUL * SALTAMP(J,I) * COS(ARGSALT)
+               ENDDO
+            ENDDO TIPLOOP2
+         ENDIF
       ENDIF
 
 C...
@@ -941,15 +1037,15 @@ C...
          IF (NFFR.GT.0) THEN
           DO J=1,NFFR
             IF(FPER(J).EQ.0.D0) THEN
-               NCYC=0
+               NCYC(1)=0
             ELSE
 #ifdef IBM
-               NCYC=INT(timeh/FPER(J),KIND(0.0d0))
+               NCYC(1)=INT(timeh/FPER(J),KIND(0.0d0))
 #else
-               NCYC=INT(timeh/FPER(J))
+               NCYC(1)=INT(timeh/FPER(J))
 #endif
             ENDIF
-            ARGJ=FAMIG(J)*(timeh-NCYC*FPER(J))+FFACE(J)
+            ARGJ=FAMIG(J)*(timeh-NCYC(1)*FPER(J))+FFACE(J)
             RFF=FFF(J)*RampExtFlux  !jgf46.02 use river ramp for Katrina
             DO I=1,NVEL
                ARG=ARGJ-QNPH(J,I)
@@ -1552,7 +1648,7 @@ C      ENDIF
       IF ( IT == NT ) THEN
         ! close NWS14 NetCdf files !
         CALL CLOSE_MET_FILES() ; 
-      END IF        
+      END IF       
 
 #if defined(TIMESTEP_TRACE) || defined(ALL_TRACE)
       call allMessage(DEBUG,"Return.")

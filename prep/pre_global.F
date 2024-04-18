@@ -303,6 +303,10 @@ Casey 180318: Added NWS=13
       LOGICAL :: found_NWS14Grib2NetCdf_Namelist = .false. 
       NAMELIST /WindGrib2NetCdf/ read_NWS14_NetCdf_using_core_0
 
+      ! dmw 202404
+      LOGICAL :: found_TipInt_Namelist = .false. 
+      NAMELIST /tipInterpolate/ tipIntInc
+
       logical :: foundWetDryControlNamelist = .false. ! for namelist 
       logical :: outputNodeCode = .false.
       logical :: outputNOFF = .false.

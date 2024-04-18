@@ -749,6 +749,17 @@ Casey 180318: Added NWS=13
      &         'The tidefacControl namelist was not found.')
       endif
       rewind(15)  !Return to the top of the fort.15 file
+      !dmw 202404
+      read(unit=15,nml=tipInterpolate,iostat=ios)
+      if ( ios.ge.0) then
+         found_TipInt_Namelist = .true.
+         call logMessage(INFO,
+     &         'The tipInterpolate namelist was found.')
+      else
+         call logMessage(INFO,
+     &         'The tipInterpolate namelist was not found.')
+      endif
+      rewind(15)  !Return to the top of the fort.15 file
       !
       !jgf:   O F F S E T   C O N T R O L   N A M E L I S T
       read(unit=15,nml=dynamicWaterLevelCorrectionControl,iostat=ios)
