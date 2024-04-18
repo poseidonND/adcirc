@@ -4068,7 +4068,8 @@ C...  RECORDING STATIONS
          ELSE         
             WRITE(16,3207) NSTAC
             IF (NSTAC.NE.0) THEN
-               WRITE(16,*) "CONC. STATION LOCATIONS WILL BE READ FROM FORT.15"
+               WRITE(16,*) 
+     &            "CONC. STATION LOCATIONS WILL BE READ FROM FORT.15"
             ENDIF
          ENDIF
  3207    FORMAT(///,5X,'NUMBER OF INPUT CONCENTRATION RECORDING ',
@@ -4841,7 +4842,7 @@ C...  SB
 C     Preparation of condensed nodes  SB
       call PrepCondensedNodes()
       
-C     Recompute a & b coefficients            
+C     Recompute a & b coefficients
       CALL RecomputeFDXEFDYEAtCondensedNodes()
       
 C...  SB END
