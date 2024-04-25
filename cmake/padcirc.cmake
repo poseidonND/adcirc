@@ -61,7 +61,9 @@ if(BUILD_PADCIRC)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/couple2baroclinic3D.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/gl2loc_mapping.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/internaltide.F
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/subgridLookup.F)
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/subgridLookup.F
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/river.F
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/owi_rain.F)
 
   add_executable(padcirc ${PADCIRC_SOURCES})
 

@@ -50,10 +50,15 @@ C
      &    igep, ndsetsw, nspoolgw, igrads, nscougc, igcp, c2ddi, iden, 
      &    rundes, runid, dtdp, ntrspm, nspoolm, nscoub, ibstp, nscouge, 
      &    ndsetsc, nspoolgc, nscougb, igbp, c3d, ipstp, nstav_g, nstav,
-     &    ntrspv, iicestp, nstam_g, nstam, openfileforread, cbaroclinic
+     &    ntrspv, iicestp, nstam_g, nstam, openfileforread, cbaroclinic,
+! kmd - v55 -- added for precipitation and point source
+     &    ncrain, crain_time1, crain_time2, crain_timinc, rain1, rain2,
+     &    rainodt, rainfallcurr, irainstp, igrp,QN_R, QN2_R, ! AT river
+     &    ncpsource, cps_time1, cps_time2, cps_timinc, cps_ramp,
+     &    ps1, ps2, pscurr, psodt, divbytotalarea, nearnode
       USE GLOBAL_3DVS, ONLY: I3DSD, I3DSV, I3DST, I3DGD, I3DGV, I3DGT
       USE MESH, ONLY : NE, NP, X, Y, SLAM, SFEA, ICS, DP, NM, MJU, AID4,
-     &    agrid 
+     &    agrid, totalarea, totalareacalc
       USE BOUNDARIES, ONLY : NETA, NFLUXF, NOPE, NVEL, LBCODEI, NPEBC
       USE HARM
       USE WETDRY, ONLY : initializeWettingAndDrying
@@ -64,6 +69,8 @@ C
       USE SUBDOMAIN, ONLY : subdomainOn, readFort015
       USE ADCIRC_MOD, ONLY : ADCIRC_Terminate
       USE OWI_ICE, ONLY : NCICE1_INIT, NCICE1_GET  !tcm v49.64.01
+      USE OWI_RAIN, ONLY : NCRAIN1_INIT, NCRAIN_GET  !kmd v55
+      USE READ_RIVER, ONLY : CONVERT_QN, FORMULATE_QFORCE, INIT_RIVER
       USE RS2,ONLY : RS2INIT,RS2GET            ! sb added 09/xx/2006
       USE NODALATTRIBUTES, ONLY : outputTau0
       USE WRITE_OUTPUT, only : outputNodeCode, outputNOFF,
@@ -92,6 +99,12 @@ C     was requested.
 c.... tcm v50.66.02 additions for time varying bathymetry
       CHARACTER(80) :: CDUM80
 C
+c... kmd - v55 - added for precip and point source information
+      INTEGER NODENUMPS, NHG
+      REAL(8) PSVAL, RAMPPS
+      REAL(8) QVAL
+C
+
 
       call setMessageSource("coldstart")
 #if defined(COLDSTART_TRACE) || defined(ALL_TRACE)
@@ -246,6 +259,28 @@ C
          END DO
          QTIME1 = STATIM*86400.D0
          QTIME2 = QTIME1 + FTIMINC
+         IF((ICS.EQ.20).OR.(ICS.EQ.21).OR.(ICS.EQ.22)!Projection start here
+     &      .OR.(ICS.EQ.23).OR.(ICS.EQ.24)) THEN
+                  WRITE(ScreenUnit,*) "River Boundary will account for projection"
+                  CALL INIT_RIVER
+                  CALL CONVERT_QN(QNIN1, QNIN2) !AT 2023
+                  CALL FORMULATE_QFORCE(QN_R,QN2_R) !Correction for Rivers in projected coordinates
+                  DO J=1,NVEL
+                       QNIN1(J) = 0.D0
+                         IF ((LBCODEI(J).EQ.2).OR.(LBCODEI(J).EQ.12)
+     &                           .OR.(LBCODEI(J).EQ.22)) THEN
+                                      QNIN1(J) = QN_R(J)
+                         ENDIF
+                  END DO
+                  DO J=1,NVEL
+                         QNIN2(J)=0.D0
+                          IF ((LBCODEI(J).EQ.2).OR.(LBCODEI(J).EQ.12)
+     &                            .OR.(LBCODEI(J).EQ.22)) THEN
+                                       QNIN2(J) = QN2_R(J)
+                          ENDIF
+                  END DO
+          ENDIF !Projection End  Here
+
       ENDIF
 
 C...INPUT METEOROLOGICAL INFORMATION FROM UNIT 22 OR UNIT 200 SERIES
@@ -337,8 +372,167 @@ C....READ IN THE TIME LEVEL 1 AND LEVEL 2 FIELDS
          ENDIF
       ENDIF
 
-#ifdef ADCNETCDF     
-      ! For the Coupling to 3D Baroclinic mode 
+
+C... kmd - v55 added for rainfall terms
+C... Input Rainfall intensity information from unit 425
+C... Read in the time level 1 and 2
+      IF (NCRAIN.GE.1) THEN
+         IF (NSCREEN.NE.0.AND.MYPROC.EQ.0) WRITE(Screenunit,1112)
+         WRITE(16,1112)
+         IF (NSCREEN.NE.0.AND.MYPROC.EQ.0) WRITE(Screenunit,2990)
+         WRITE(16,2990)
+ 2990    FORMAT(/,1X,'RAINFALL INTENSITY INFORMATION READ.',/)
+
+         IF (NCRAIN.EQ.2) THEN
+           OPEN(425,FILE=TRIM(INPUTDIR)//'/'//'fort.425')
+           READ(425,*) (NHG,RAIN1(I),I=1,NP)
+           READ(425,*) (NHG,RAIN2(I),I=1,NP)
+           CRAIN_TIME1 = STATIM*86400.D0
+           CRAIN_TIME2 = CRAIN_TIME1 + CRAIN_TIMINC
+           DO I=1,NP
+             Rainfallcurr(I) = RAIN1(I)
+           END DO
+         END IF
+
+         IF (ABS(NCRAIN).EQ.12) THEN
+           CALL NCRAIN1_INIT(RAIN1,NP)
+           CALL NCRAIN_GET(RAIN1,NP)
+           CALL NCRAIN_GET(RAIN2,NP)
+           CRAIN_TIME1 = STATIM*86400.D0
+           CRAIN_TIME2 = CRAIN_TIME1 + CRAIN_TIMINC
+           DO I=1,NP
+             Rainfallcurr(I) = RAIN1(I)
+           END DO
+         END IF
+      END IF
+
+C.. cms - v55 -- added this for point source
+C-------POINT SOURCE INFORMATION--------------------------
+
+      IF (ABS(NCPSOURCE).GE.1) THEN
+
+        IF (NSCREEN.NE.0.AND.MYPROC.EQ.0) WRITE(Screenunit,1112)
+         WRITE(16,1112)
+        IF (NSCREEN.NE.0.AND.MYPROC.EQ.0) WRITE(Screenunit,2991)
+         WRITE(16,2991)
+
+      END IF
+
+      SELECT CASE (ABS(NCPSOURCE))
+
+C     -------------
+       CASE(0) ! No point source is being used
+C     -------------
+         WRITE(16,2993)
+C     -------------
+       CASE(1) ! Information read in as intensities
+C     -------------
+         IF(CPS_RAMP .NE. 0.d0) THEN
+           rampps = 0.d0
+         ELSE
+           rampps = 1.d0
+         ENDIF
+         OPEN(426,FILE=TRIM(INPUTDIR)//'/'//'fort.426')
+         READ(426,*) numPS
+         PS1(:) = 0.d0
+         DO I=1,numPS
+           READ(426,*) NODENUMPS,PSVAL
+           PS1(NODENUMPS)=PSVAL
+         END DO
+         READ(426,*) numPS
+         PS2(:) = 0.d0
+         DO I=1,numPS
+           READ(426,*) NODENUMPS,PSVAL
+           PS2(NODENUMPS)=PSVAL
+         END DO
+         CPS_TIME1 = STATIM*86400.d0
+         CPS_TIME2 = CPS_TIME1 + CPS_TIMINC
+         DO I=1,NP
+            PSCurr = rampps*PS1(I)
+         END DO
+
+C    ------------------
+       CASE(2) ! Information read in as discharge values
+C    ------------------
+         IF(CPS_RAMP .NE. 0.d0) THEN
+           rampps = 0.d0
+         ELSE
+           rampps = 1.d0
+         ENDIF
+         CALL TotalAreaCalc() ! Set values for first timestep
+         OPEN(426,FILE=TRIM(INPUTDIR)//'/'//'fort.426')
+         READ(426,*) numPS
+         PS1(:) = 0.d0
+         DO I=1,numPS
+           READ(426,*) NODENUMPS,QVAL
+           PS1(NODENUMPS)=QVAL
+         END DO
+         READ(426,*) numPS
+         PS2(:) = 0.d0
+         DO I=1,numPS
+           READ(426,*) NODENUMPS,QVAL
+           PS2(NODENUMPS)=QVAL
+         END DO
+         CPS_TIME1 = STATIM*86400.d0
+         CPS_TIME2 = CPS_TIME1 + CPS_TIMINC
+         DO I=1,NP
+            IF (TotalArea(I).EQ.0.d0) THEN
+              DivByTotalArea(I)=0.d0
+            ELSE
+              DivByTotalArea(I)=1.d0/TotalArea(I)
+            END IF
+            PSCurr = rampps*PS1(I)*3.d0*DivByTotalArea(I)
+         END DO
+
+C      -----------------
+       CASE(3,4) ! Information read in two separate files
+C      -----------------
+         IF(CPS_RAMP .NE. 0.d0) THEN
+           rampps = 0.d0
+         ELSE
+           rampps = 1.d0
+         ENDIF
+         CALL TotalAreaCalc() ! Set values for first timestep
+         OPEN(430,FILE=TRIM(INPUTDIR)//'/'//'fort.430')
+         PS1(:) = 0.d0
+         DO I=1,numPS
+            READ(430,*) QVAL
+            PS1(nearNode(I))=PS1(nearNode(I))+QVAL
+         END DO
+         PS2(:) = 0.d0
+         DO I=1,numPS
+            READ(430,*) QVAL
+            PS2(nearNode(I))=PS2(nearNode(I))+QVAL
+         END DO
+         CPS_TIME1 = STATIM*86400.d0
+         CPS_TIME2 = CPS_TIME1 + CPS_TIMINC
+         DO I=1,NP
+            IF (TotalArea(I).EQ.0.d0) THEN
+              DivByTotalArea(I)=0.d0
+            ELSE
+              DivByTotalArea(I)=1.d0/TotalArea(I)
+            END IF
+            PSCurr = rampps*PS1(I)*3.d0*DivByTotalArea(I)
+         END DO
+
+C      -----------------
+       CASE DEFAULT
+C      -----------------
+         WRITE(16,2994)
+
+C      -----------------
+       END SELECT
+
+
+ 2991      FORMAT(/,1X,'POINT SOURCE INFORMATION READ.',/)
+ 2993      FORMAT(/,1X,'NO POINT SOURCE INFORMATION READ.',/)
+ 2994      FORMAT(/,1X,'PROBLEM WITH POINT SOURCE METHOD.',/)
+
+C---------END POINT SOURCE INFORMATION--------------------
+
+
+#ifdef ADCNETCDF
+      ! For the Coupling to 3D Baroclinic mode
       IF (C2DDI.and.CBaroclinic.and.abs(IDEN).ge.5) THEN
          call Initial_BC3D_NetCDF(STATIM*86400.d0)
       endif
@@ -358,8 +552,11 @@ C....OPEN ELEVATION STATION OUTPUT FILE
 C....WRITE OUT HEADER INFORMATION INCLUDING NTRSPE (NO. OF DATA PTS. AT EACH
 C....ELEVATION STATION), NSTAE, DT*NSPOOLE, NSPOOLE, IRTYPE
 C...
+C    Rainfall output at same intervals as elevation - added kmd v55
+
       NSCOUE=0
       IESTP=0
+      IRAINSTP=0   !rainfall
 
  3220 FORMAT(1X,A32,2X,A24,2X,A24)
  3645 FORMAT(1X,I10,1X,I10,1X,E15.7,1X,I5,1X,I5)
@@ -368,9 +565,21 @@ C...
          if (write_local_files.eqv..false.) then
             CALL OPEN_GBL_FILE(61, TRIM(GLOBALDIR)//'/'//'fort.61',
      &       NSTAE_G, NSTAE, HEADER61)
-         else 
+            IF (NCRAIN.NE.0) THEN
+              CALL OPEN_GBL_FILE(94,TRIM(GLOBALDIR)//'/'//'fort.94',
+     &         NSTAE_G, NSTAE, HEADER61)
+              CALL OPEN_GBL_FILE(901,TRIM(GLOBALDIR)//'/'//'fort.901',
+     &         NSTAE_G, NSTAE, HEADER61) ! DW changed to 901 for nameing 
+                                         ! consistency
+
+            END IF
+         else
             CALL OPEN_GBL_FILE(61, TRIM(LOCALDIR)//'/'//'fort.61',
      &       NSTAE_G, NSTAE, HEADER61)
+            IF (NCRAIN.NE.0) THEN
+              CALL OPEN_GBL_FILE(94,TRIM(LOCALDIR)//'/'//'fort.901',
+     &         NSTAE_G, NSTAE, HEADER61)
+            END IF
          endif
          IESTP=2
       ENDIF
@@ -378,34 +587,50 @@ C...
       IF(ABS(NOUTE).EQ.2) THEN
          OPEN(61,FILE=TRIM(LOCALDIR)//'/'//'fort.61',
      &           ACCESS='DIRECT',RECL=NBYTE)
+         IF (NCRAIN.NE.0) THEN
+            OPEN(94,FILE=TRIM(LOCALDIR)//'/'//'fort.901',
+     &       ACCESS='DIRECT',RECL=NBYTE)
+         END IF
          IF(NBYTE.EQ.4) THEN
             DO I=1,8
                WRITE(61,REC=IESTP+I) RDES4(I)
+               IF (NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) RDES4(I)
             ENDDO
             IESTP=IESTP+8
+            IF (NCRAIN.NE.0) IRAINSTP=IRAINSTP+8
             DO I=1,6
                WRITE(61,REC=IESTP+I) RID4(I)
+               IF (NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) RID4(I)
             ENDDO
             IESTP=IESTP+6
+            IF (NCRAIN.NE.0) IRAINSTP=IRAINSTP+6
             DO I=1,6
                WRITE(61,REC=IESTP+I) AID4(I)
+               IF (NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) AID4(I)
             ENDDO
             IESTP=IESTP+6
-            ENDIF
+            IF (NCRAIN.NE.0) IRAINSTP=IRAINSTP+6
+         ENDIF
          IF(NBYTE.EQ.8) THEN
             DO I=1,4
                WRITE(61,REC=IESTP+I) RDES8(I)
+               IF (NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) RDES8(I)
             ENDDO
             IESTP=IESTP+4
+            IF (NCRAIN.NE.0) IRAINSTP=IRAINSTP+4
             DO I=1,3
                WRITE(61,REC=IESTP+I) RID8(I)
+               IF (NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) RID8(I)
             ENDDO
             IESTP=IESTP+3
+            IF (NCRAIN.NE.0) IRAINSTP=IRAINSTP+3
             DO I=1,3
                WRITE(61,REC=IESTP+I) AID8(I)
+               IF (NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) AID8(I)
             ENDDO
             IESTP=IESTP+3
-            ENDIF
+            IF (NCRAIN.NE.0) IRAINSTP=IRAINSTP+3
+         ENDIF
          WRITE(61,REC=IESTP+1) NTRSPE
          WRITE(61,REC=IESTP+2) NSTAE
          WRITE(61,REC=IESTP+3) DT*NSPOOLE
@@ -413,7 +638,16 @@ C...
          WRITE(61,REC=IESTP+5) 1
          IESTP=IESTP+5
          CLOSE(61)
-         ENDIF
+         IF (NCRAIN.NE.0) THEN
+            WRITE(901,REC=IRAINSTP+1) NTRSPE
+            WRITE(901,REC=IRAINSTP+2) NSTAE
+            WRITE(901,REC=IRAINSTP+3) DT*NSPOOLE
+            WRITE(901,REC=IRAINSTP+4) NSPOOLE
+            WRITE(901,REC=IRAINSTP+5) 1
+            IRAINSTP=IRAINSTP+5
+            CLOSE(901)
+         END IF
+      ENDIF
 
 C...
 C....INITIALIZE VELOCITY STATION SPOOL COUNTER

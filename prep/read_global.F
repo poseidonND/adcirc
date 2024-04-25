@@ -547,6 +547,14 @@ Casey 180318: Added NWS=13
 #endif
       ! DW
       INTEGER :: IOS_NWS14Grib2NC
+C..v53 - kmd - additions for rainfall
+      INTEGER :: IOS_RAIN = 0
+
+C..v53 - kmd - additions for point source
+      INTEGER :: IOS_PS = 0
+      INTEGER :: IOS_PS_STAT = 0
+
+
 
 C...tcm v51.20.03 Local variables for external station location files
       INTEGER :: NSTAE2,NSTAV2,NSTAC2,NSTAM2
@@ -841,6 +849,29 @@ c..
       endif
       rewind(15)  !Return to the top of the fort.15 file
 
+C... v53 - kmd - additions for rainfall
+      READ(UNIT = 15, NML = rainfallcontrol, IOSTAT = IOS_RAIN)
+      IF (IOS_RAIN.LT.0) THEN
+         CALL logMessage(INFO,
+     &     'The rainfallcontrol namelist was not found.')
+      ELSE
+         FOUND_rainCon_NML = .true.
+         print *, "NCRAIN= ", NCRAIN
+      END IF
+      REWIND(15)
+
+C... v53 - kmd - additions for point source
+      READ(UNIT = 15, NML = psourcecontrol, IOSTAT = IOS_PS)
+      IF (IOS_PS.LT.0) THEN
+         CALL logMessage(INFO,
+     &     'The psourcecontorol namelist was not found.')
+      ELSE
+         FOUND_psCon_NML = .true.
+         print *, "NCPSOURCE = ", NCPSOURCE
+      END IF
+      REWIND(15)
+
+C     Start reading at top of fort.15
 
       READ(15,80) RUNDES
 C
