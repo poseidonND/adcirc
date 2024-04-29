@@ -84,7 +84,7 @@ C-----------------------------------------------------------------------
      &   StatPartWetFix, How2FixStatPartWet, cgwce_hdp, ifnl_hdp, 
      &   CAliDisp, IFSFM, usingDynamicWaterLevelCorrection,slim,windlim,
      &   directvelWD,useHF,Limit_WaveStressGrad, directvelWD,useHF, 
-     &   WarnVel,TideFacUpdateInt,tipIntInc
+     &   WarnVel,TideFacUpdateInt,tipIntInc,
      &   NCRAIN, CRAIN_TIMINC, NCPSOURCE, CPS_TIMINC, CPS_RAMP, !kmd-v53 -- added for precipitation and point source
      &   alloc_main15a, alloc_main15b !kmd-v53 -- added for precipitation and point source
     
