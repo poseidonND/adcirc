@@ -85,8 +85,9 @@ C-----------------------------------------------------------------------
      &   CAliDisp, IFSFM, usingDynamicWaterLevelCorrection,slim,windlim,
      &   directvelWD,useHF,Limit_WaveStressGrad, directvelWD,useHF, 
      &   WarnVel,TideFacUpdateInt,tipIntInc
-
-
+     &   NCRAIN, CRAIN_TIMINC, NCPSOURCE, CPS_TIMINC, CPS_RAMP, !kmd-v53 -- added for precipitation and point source
+     &   alloc_main15a, alloc_main15b !kmd-v53 -- added for precipitation and point source
+    
 #if defined CSWAN || defined ADCSWAN
      &   , SWAN_OutputHS, SWAN_OutputDIR,
      &    SWAN_OutputTM01, SWAN_OutputTPS, SWAN_OutputWIND,
@@ -264,52 +265,15 @@ Casey 121019: Added multiplication factor to be used before sending winds to cou
       NAMELIST /waveCoupling/ WaveWindMultiplier,
      &         Limit_WaveStressGrad, WaveStressGrad_Cap
 
+C... kmd-v53 -- added for precipitation and point source control
+      NAMELIST /rainfallcontrol/ NCRAIN, CRAIN_TIMINC
+      NAMELIST /psourcecontrol/ NCPSOURCE, CPS_TIMINC, CPS_RAMP
+      INTEGER :: ios_ps, ps_unit
+
+
       call setMessageSource("read_input")
 #if defined(READ_INPUT_TRACE) || defined(ALL_TRACE)
       call allMessage(DEBUG,"Enter.")
-#endif
-C...
-C...PRINT OUT HEADER FOR OUTPUT INCLUDING VERSION NUMBER AND COPYRIGHT
-C...
-      WRITE(16,1112)
-      WRITE(16,1112)
-      WRITE(16,1114) TRIM(ADC_VERSION)
-      WRITE(16,1112)
-
- 1114 FORMAT(//,19X,'PROGRAM ADCIRC   VERSION ',A,
-     &     //,5X,'AN ADVANCED CIRCULATION MODEL FOR SHELVES, COASTAL ',
-     &     'SEAS AND ESTUARIES',
-     &     ///,7X,'-  DEVELOPED BY',
-     &     //,10X,'R.A. LUETTICH, JR',
-     &     /,12X,'UNIVERSITY OF NORTH CAROLINA AT CHAPEL HILL',
-     &     /,12X,'INSTITUTE OF MARINE SCIENCES',
-     &     //,10X,'J.J. WESTERINK ',
-     &     /,12X,
-     &     'DEPARTMENT OF CIVIL ENGINEERING AND GEOLOGICAL SCIENCES',
-     &     /,12X,'UNIVERSITY OF NOTRE DAME',
-     &     ///,7X,'-  THE ADCIRC SOURCE CODE IS COPYRIGHTED BY',
-     &     //,10X,'R.A. LUETTICH, JR. AND J.J. WESTERINK, 1994-2006',
-     &     //,7X,
-     &     'NO PART OF THIS CODE MAY BE REPRODUCED OR REDISTRIBUTED',
-     &     /,10X,'WITHOUT THE WRITTEN PERMISSION OF THE AUTHORS',//)
-C...
-C...  WRITE OUT HEADER INFORMATION DESCRIBING HOW THE CODE HAS BE SET UP
-C...
-      WRITE(16,1210)
- 1210 FORMAT(//,1X,'THE ADCIRC SOURCE CODE HAS BEEN CONFIGURED ',
-     &             'BY THE PREPROCESSOR AS FOLLOWS:',/)
-
-#ifdef CMACHSUN
-      WRITE(16,*) '      - CODE SETUP TO RUN ON SUN 4 OR SPARC ',
-     &            'COMPUTERS'
-#endif
-
-#ifdef CVEC
-      WRITE(16,*) '      - CODE OPTIMIZED FOR A VECTOR COMPUTER'
-#endif
-
-#ifdef CSCA
-      WRITE(16,*) '      - CODE OPTIMIZED FOR A SCALAR COMPUTER'
 #endif
       WRITE(16,*) '      - dmw202401 THIS CODE USES A VELCHECKER'
       WRITE(16,*) '      - dmw202401 THIS CODE USES THE FIX FOR SUBGRID BARRIERS'
@@ -698,6 +662,26 @@ C     WJP add namelist
       call logMessage(ECHO,trim(scratchMessage))
       rewind(15)
 
+C     kmd-v53 -- Added namelist for precipitation forcing terms
+      namelistSpecifier = 'rainfallcontrol'
+      read(unit=15,nml=rainfallcontrol,iostat=IOS)
+      call logNameListReadStatus(namelistSpecifier,ios)
+      write(scratchMessage,*) "NCRAIN = ", NCRAIN,
+     &      " CRAIN_TIMINC = ", CRAIN_TIMINC
+      call logMessage(ECHO,trim(scratchMessage))
+      rewind(15)
+
+C     kmd-v53 -- Added namelist for point source forcing terms
+C     cms-v55    Added default value for PS ramp
+      CPS_RAMP = 0.d0     !default
+      namelistSpecifier = 'psourcecontrol'
+      read(unit=15,nml=psourcecontrol,iostat=IOS)
+      call logNameListReadStatus(namelistSpecifier,ios)
+      write(scratchMessage,*) "NCPSOURCE = ", NCPSOURCE,
+     &      " CPS_TIMINC = ", CPS_TIMINC, " CPS_RAMP = ", CPS_RAMP
+      call logMessage(ECHO,trim(scratchMessage))
+      rewind(15)
+
 !     WJP add namelist for Ali's dispersion
 !     Defaults are already in global 
       namelistSpecifier = 'AliDispersionControl'
@@ -888,12 +872,6 @@ C
          WRITE(16,3563) NSCREEN
  3563    FORMAT(/,5X,'NSCREEN = ',I6,
      &        /,9X,'SCREEN OUTPUT WILL NOT BE PROVIDED',/)
-      ENDIF
-
-      IF (MYPROC.EQ.0.and.NScreen.ne.0) THEN
-         WRITE(ScreenUnit,1112)
-         WRITE(ScreenUnit,1114) TRIM(ADC_VERSION)
-         WRITE(ScreenUnit,1112)
       ENDIF
 C...
 C...  READ AND PROCESS IHOT - HOT START OPTION
@@ -2402,6 +2380,146 @@ C
 C------------------ END TIME VARYING BATHY ------------------------------C
 C
 
+C... kmd-v53 Addition of precipitation forcing on wet nodes
+C
+C-------------------BEGIN PRECIPITATION SOURCE TERM----------------------C
+C
+C The value of NCRAIN is set in the rainfallcontrol namelist if present
+C
+
+      IF ((NCRAIN.NE.0).AND.
+     &   (NCRAIN.NE.2).AND.(NCRAIN.NE.12).AND.
+     &   (NCRAIN.NE.-12)) THEN
+         IF (NSCREEN.NE.0.AND.MYPROC.EQ.0) THEN
+           WRITE(ScreenUnit,9972)
+           WRITE(ScreenUnit,*) 'NCRAIN =', NCRAIN
+           WRITE(ScreenUnit,9816)
+           WRITE(ScreenUnit,9973)
+         END IF
+         WRITE(16,9972)
+         WRITE(16,*) 'NCRAIN = ', NCRAIN
+         WRITE(16,9816)
+         WRITE(16,9973)
+ 9816    FORMAT(/,1X,'Your selection of NCRAIN (a UNIT 15 input ',
+     &     'parameter) is not an allowable value')
+         CALL ADCIRC_Terminate()
+      END IF
+
+      IF (NCRAIN.EQ.0) THEN
+        WRITE(16,3298) NCRAIN
+ 3298   FORMAT(/,5X, 'NCRAIN = ',I3,
+     &   /,9X,'RAINFALL IS NOT USED IN ',
+     &   'THE GWC EQUATION')
+      END IF
+
+      IF(NCRAIN.EQ.2) THEN
+        WRITE(16,3299) NCRAIN
+ 3299   FORMAT(/5X,'NCRAIN = ',I3
+     &    /,9X,'RAINFALL IS USED IN THE ',
+     &    /,9X,'GWC EQUATION',
+     &    /,9X,'RAINFALL VALUES ARE READ FROM RAW',
+     &    /,9X,'RAINFALL DATA FILES (UNIT 425) in units of m/s.',
+     &    /,9X,'INTERPOLATION IN TIME IS DONE TO SYNC THE RAINFALL ',
+     &    /,9X,'DATA WITH THE MODEL TIME STEP.',
+     &    /,9X,'FOR A COLD START, THE UNIT 425 FILE BEGINS AT THE ',
+     &    /,9X,'TIME OF THE COLD START.')
+      END IF
+
+      IF (ABS(NCRAIN).EQ.12) THEN
+        WRITE(16,3302) NCRAIN
+ 3302   FORMAT(/5X,'NCRAIN = ',I3,
+     &   /,9X,'RAINFALL VALUES ARE USED IN ',
+     &   /,9X,'THE GWC EQUATION ',
+     &   /,9X,'RAINFALL VALUES ARE READ FROM RAW ',
+     &   /,9X,'RAINFALL DATA FILES (UNITS 425 AND/OR 427) in mm/hr.',
+     &   /,9X,'RAINFALL FILES FOLLOW THE OWI FORMAT.',
+     &   /,9X,'FOR A COLD START, THE UNIT 425 AND/OR 427 ',
+     &   /,9X,'FILES BEGIN AT THE TIME OF THE COLD START. ',
+     &   /,9X,'FOR A HOT START, THE UNIT 425 AND/OR 427 ',
+     &   /,9X,'FILES BEGIN AT THE TIME OF THE HOT START.')
+      END IF
+C
+C---------------------END PRECIPITATION SOURCE TERM----------------------C
+C
+
+C... kmd-v53 Addition of point source terms
+C
+C----------------------BEGIN POINT SOURCE TERM---------------------------C
+C
+C The value of NCPSOURCE is set in psourcecontrol namelist if present
+C
+
+      SELECT CASE (ABS(NCPSOURCE))
+         CASE(0) ! no point sources
+            WRITE(16,3268) NCPSOURCE
+         CASE(1) ! read in as intensities at the nodes
+            WRITE(16,3269) NCPSOURCE
+         CASE(2) ! read in as discharges at the nodes
+            WRITE(16,3270) NCPSOURCE
+         CASE(3) ! read in as separate files - lon/lat and Q
+            WRITE(16,3271) NCPSOURCE
+         CASE DEFAULT
+            IF (NSCREEN.NE.0.AND.MYPROC.EQ.0) THEN
+               WRITE(ScreenUnit,9972)
+               WRITE(ScreenUnit,*) 'NCPSOURCE =', NCPSOURCE
+               WRITE(ScreenUnit,9818)
+               WRITE(ScreenUnit,9973)
+            END IF
+            WRITE(16,9972)
+            WRITE(16,*) 'NCPSOURCE = ', NCPSOURCE
+            WRITE(16,9818)
+            WRITE(16,9973)
+            CALL ADCIRC_Terminate()
+      END SELECT
+
+C cms 55.##  Check on point source ramp value
+      !IF (CPS_RAMP.lt.1.0d-6) WRITE(16,3272) CPS_RAMP
+      IF (CPS_RAMP.lt.1.0d-6) THEN
+         CPS_RAMP = 0.d0
+         WRITE(16,3272) CPS_RAMP
+      ENDIF
+
+ 3268   FORMAT(/,5X, 'NCPSOURCE = ',I3,
+     &   /,9X,'POINT SOURCE IS NOT USED IN ',
+     &   'THE GWC EQUATION')
+ 3269   FORMAT(/5X,'NCPSOURCE = ',I3
+     &    /,9X,'POINT SOURCE IS USED IN THE ',
+     &    /,9X,'GWC EQUATION',
+     &    /,9X,'POINT SOURCE VALUES ARE READ FROM RAW POINT',
+     &    /,9X,'SOURCE DATA FILES IN INTENSITIES (m/s) (UNIT 426).',
+     &    /,9X,'INTERPOLATION IN TIME IS DONE TO SYNC THE POINT SOURCE',
+     &    /,9X,'DATA WITH THE MODEL TIME STEP.',
+     &    /,9X,'FOR A COLD START, THE UNIT 426 FILE BEGINS AT THE ',
+     &    /,9X,'TIME OF THE COLD START.')
+ 3270   FORMAT(/5X,'NCPSOURCE = ',I3
+     &    /,9X,'POINT SOURCE IS USED IN THE ',
+     &    /,9X,'GWC EQUATION',
+     &    /,9X,'POINT SOURCE VALUES ARE READ FROM RAW POINT',
+     &    /,9X,'SOURCE DATA FILES AS DISCHARGES (m3/s) (UNIT 426).',
+     &    /,9X,'INTERPOLATION IN TIME IS DONE TO SYNC THE POINT SOURCE',
+     &    /,9X,'DATA WITH THE MODEL TIME STEP.',
+     &    /,9X,'FOR A COLD START, THE UNIT 426 FILE BEGINS AT THE ',
+     &    /,9X,'TIME OF THE COLD START.')
+ 3271   FORMAT(/5X,'NCPSOURCE = ',I3
+     &   /,9X,'POINT SOURCE IS USED IN THE GWC EQUATION',
+     &   /,9X,'SOURCE LOCATIONS ARE READ DURING MODEL',
+     &     1X,'INITIALIZATION IN LON/LAT FORMAT FROM (UNIT 428).',
+     &   /,9X,'SOURCE VALUES ARE READ FROM DATA FILES AS',
+     &     1X,'DISCHARGES (m3/s) (UNIT 430).',
+     &   /,9X,'INTERPOLATION IN TIME IS DONE TO SYNC THE POINT SOURCE',
+     &     1X,'DATA WITH THE MODEL TIME STEP.',
+     &   /,9X,'FOR A COLD START, THE UNIT 430 FILE BEGINS AT THE',
+     &     1X,'TIME OF THE COLD START.')
+ 3272   FORMAT(/5X,'WARNING: CPS_RAMP = ',G11.4,
+     &     1X,'It will be rounded to zero.',
+     &   /,9X,'Point source forcing will be at full strength from',
+     &     1X,'the start of the simulation.')
+
+ 9818    FORMAT(/,1X,'Your selection of NCPSOURCE (a UNIT 15 input ',
+     &     'parameter) is not an allowable value')
+C
+C------------------------END POINT SOURCE TERM---------------------------C
+C
 C...
 C...  READ AND PROCESS NRAMP - WHETHER A RAMP FUNCTION WILL BE USED
 C...
@@ -4859,6 +4977,58 @@ C - allocate global arrays for time varying bathymetry
 C - allocate arrays dealing with wind forcing
       call alloc_main12()
 
+C - kmd v53 -- Precipitation
+C - allocate global arrays for precipitation
+      CALL ALLOC_Main15a()
+
+C...  v53 cms -- Additions for reading point source information
+C...      Intensity/discharge values are read and processed in
+C...      cstart/hstart/timestep.  Only allocation of the arrays
+C...      and location of lon/lat input options are processed here.
+
+C-----------------BEGIN POINT SOURCE INFORMATION------------------------
+      IF (ABS(NCPSOURCE) .GT. 0) THEN
+         WRITE(16,1112)
+         WRITE(16,'(//,1x,A,//)') 'POINT SOURCE INFORMATION'
+      ENDIF
+
+      SELECT CASE (ABS(NCPSOURCE))
+         CASE(1) ! read in as intensities at the nodes
+            WRITE(16,3010)
+            CALL ALLOC_Main15b()
+         CASE(2) ! read in as discharges at the nodes
+            WRITE(16,3010)
+            CALL ALLOC_Main15b()
+         CASE(3) ! read in as seperate files - lon/lat and Q
+            ps_unit=428
+            CALL openFileForRead(ps_unit,TRIM(INPUTDIR)//'/'//
+     &           'fort.428',ios_ps)
+            IF (ios_ps.GT.0) CALL ADCIRC_Terminate()
+            READ(428,*) numPS
+            WRITE(16,3011) numPS
+            CALL ALLOC_Main15b()
+            CALL ReadPointSourceLocs(ps_unit)
+            CLOSE(ps_unit)
+         CASE(4) ! read in from NWM - ascii format
+            ps_unit=429
+            CALL openFileForRead(ps_unit,TRIM(INPUTDIR)//'/'//
+     &           'fort.429',ios_ps)
+            IF (ios_ps.GT.0) CALL ADCIRC_Terminate()
+            READ(429,*) numPS
+            WRITE(16,3011) numPS
+            WRITE(16,3012)
+            CALL ALLOC_Main15b()
+            CALL ReadPointSourceLocs(ps_unit)
+            CLOSE(ps_unit)
+      END SELECT
+
+ 3010    FORMAT(/,5X,'NUMBER OF POINT SOURCES CAN VARY WITH TIME')
+ 3011    FORMAT(/,5X,'NUMBER OF POINT SOURCES FIXED AT ',I6)
+ 3012    FORMAT(  5X,'Any NWM feature that does not end in the',
+     &            1X,'domain will be deactivated. (Near/To Node = 0)')
+
+C------------END POINT SOURCE INFORMATION-----------------------------
+
       if (mnproc == 1) then
          NP_G    = NP               !
          NE_G    = NE               !
@@ -6512,6 +6682,350 @@ C
       RETURN
 C-----------------------------------------------------------------------
       END SUBROUTINE ComputeInterpolatingFactors
+C-----------------------------------------------------------------------
+
+C-----------------------------------------------------------------------
+C    S U B R O U T I N E  R E A D  P O I N T  S O U R C E  L O C S
+C-----------------------------------------------------------------------
+C    cms v53dev
+C    Subroutine to read in point source coordinates and determine the
+C    nearest node to apply the point source. What is read in depends
+C    upon the value of ps_lun:
+C      428 -  standard lon, lat input (two columns)
+C      429 -  National Water Model (NWM) input (five columns)
+C             N designates endpoint for this feature (point source)
+C         and T designates endpoint for the next downstream feature
+C      429 -  NOT ACTIVATED YET
+C-----------------------------------------------------------------------
+      SUBROUTINE ReadPointSourceLocs(ps_lun)
+
+      use sizes, only : MyProc, numPS
+      use global, only :  IFSPROTS,
+     &   allMessage, setMessageSource, unsetMessageSource,
+     &   nearNode !, toNode, featureId
+      use mesh, only : ICS, SLAM0, SFEA0, DRVSPCOORSROTS, CYLINDERMAP
+      use adcirc_mod, only : adcirc_terminate
+      use ADC_CONSTANTS, only : RAD2DEG, DEG2RAD
+
+#ifdef CMPI
+      USE MESSENGER, ONLY : msg_fini
+#endif
+
+      IMPLICIT NONE
+
+      INTEGER, INTENT(IN)  :: ps_lun
+      INTEGER              :: I
+      REAL(8)             :: xcoordN, ycoordN, xcoordT, ycoordT
+      REAL(8)             :: lonN, latN, lonT, latT
+      REAL(8)             :: lonrN, latrN, lonrT, latrT !for transform
+C
+      CALL setMessageSource("ReadPointSourceLocs.")
+#if defined(READ_INPUT_TRACE) || defined(ALL_TRACE_)
+      CALL allMessage(DEBUG,"Enter.")
+#endif
+C
+      IF(ICS.EQ.1) WRITE(16,3013)
+      IF(ICS.EQ.2) WRITE(16,3014)
+
+      IF (ps_lun .EQ. 428) THEN
+         ! simple lon/lat format - find nearest node
+         DO I=1,numPS
+            IF (ICS.EQ.1) THEN
+               READ(ps_lun,*) xcoordN, ycoordN
+            ELSE
+               READ(ps_lun,*) lonN, latN
+               lonN = lonN*DEG2RAD
+               latN = latN*DEG2RAD
+               !CALL CPP(xcoordN,ycoordN,lonN,latN,SLAM0,SFEA0)
+               !from v55 updates
+               IF ( IFSPROTS .EQ. 1 ) THEN
+                  CALL DRVSPCOORSROTS( lonrN, latrN, lonN, latN )
+               ELSE
+                  latrN = latN
+                  lonrN = lonN
+               END IF
+               CALL CYLINDERMAP( xcoordN, ycoordN,
+     &              lonrN, latrN, SLAM0, SFEA0, ICS)
+            END IF
+            CALL kdtSearchPS(xcoordN, ycoordN, nearNode(I))
+            IF (ICS.EQ.1) THEN
+               WRITE(16,1881) 'Near',I,nearNode(I),
+     &              xcoordN, ycoordN
+            ELSE
+               WRITE(16,1882) 'Near',I,nearNode(I),
+     &              lonN*RAD2DEG,latN*RAD2DEG,xcoordN,ycoordN
+            END IF
+         END DO
+C Full NWM option not yet activated
+C      ELSE IF (ps_lun.EQ.429) THEN
+C          full NWM featureId/lon/lat/lon/lat format - find
+C          both nearest node and downstream segment nearest node
+C         DO I=1,numPS
+C            IF (ICS.EQ.1) THEN
+C               READ(ps_lun,*) featureId(I),xcoordN,ycoordN,
+C     &             xcoordT,ycoordT
+C            ELSE
+C               READ(ps_lun,*) featureId(I),lonN,latN,lonT,latT
+C               lonN = lonN * DEG2RAD
+C               latN = latN * DEG2RAD
+C               lonT = lonT * DEG2RAD
+C               latT = latT * DEG2RAD
+               !CALL CPP(xcoordN,ycoordN,lonN,latN,SLAM0,SFEA0)
+               !CALL CPP(xcoordT,ycoordT,lonT,latT,SLAM0,SFEA0)
+               ! v55 coordinate transformation updates
+C               IF ( IFSPROTS .EQ. 1 ) THEN
+C                  CALL DRVSPCOORSROTS( lonrN, latrN, lonN, latN )
+C                  CALL DRVSPCOORSROTS( lonrT, latrT, lonT, latT )
+C               ELSE
+C                  latrN = latN
+C                  latrT = latT
+C                  lonrN = lonN
+C                  lonrT = lonT
+C
+C               CALL CYLINDERMAP( xcoordN, ycoordN,
+C     &              lonrN, latrN, SLAM0, SFEA0, ICS)
+C               CALL CYLINDERMAP( xcoordT, ycoordT,
+C     &              lonrT, latrT, SLAM0, SFEA0, ICS)
+C            END IF
+C            CALL kdtSearchPS(xcoordN, ycoordN, nearNode(I))
+C            CALL kdtSearchPS(xcoordT, ycoordT, toNode(I))
+C            IF (ICS.EQ.1) THEN
+C               WRITE(16,1881) 'Near',featureId(I),nearNode(I),
+C     &               xcoordN, ycoordN
+C               WRITE(16,1881) 'To  ',featureId(I),toNode(I),
+C     &               xcoordN, ycoordN
+C            ELSE
+C               WRITE(16,1882) 'Near', featureId(I),nearNode(I),
+C     &              lonN*RAD2DEG,latN*RAD2DEG,xcoordN,ycoordN
+C               WRITE(16,1882) 'To  ', featureId(I),toNode(I),
+C     &              lonT*RAD2DEG,latT*RAD2DEG,xcoordT,ycoordT
+C            END IF
+C         END DO
+
+      END IF
+
+3013  FORMAT(/,'TYPE   FEATURE      NODE',9X,'X',13X,'Y',/)
+3014  FORMAT(/,'TYPE   FEATURE      NODE',6X,'LON(DEG)',
+     &           6X,'LAT(DEG)',8X,'XCP',12X,'YCP')
+1881  FORMAT(A,2X,I9,4X,I9,2(4X,F14.2))
+1882  FORMAT(A,2X,I9,4X,I9,2(4X,F9.4),2(2X,F14.2))
+
+#if defined(READ_INPUT_TRACE) || defined(ALL_TRACE)
+      CALL allMessage(DEBUG,"Return.")
+#endif
+      CALL unsetMessageSource()
+C-----------------------------------------------------------------------
+      END SUBROUTINE ReadPointSourceLocs
+C-----------------------------------------------------------------------
+
+C-----------------------------------------------------------------------
+C    S U B R O U T I N E   K D T S E A R C H P S
+C-----------------------------------------------------------------------
+C
+C Subroutine that uses the KDTREE2 algorithm for finding which element
+C     a point source lies in. Modified from kdtsearch () since if the
+C     source is not within an element it cannot be added - unlike a
+C     recording station, a PS must be within the domain to be added.
+C
+C Point sources that were not found during the preprocessing are
+C     indicated by lon=lat=-999.0 which should return a "not found"
+C     result.
+C
+C Returns the nearest node instead of the found element.
+C
+C Modified by:  Chris Szpilka, OU, Norman, OK 73019
+C Added in v53dev change for v55
+C-----------------------------------------------------------------------
+
+       SUBROUTINE kdtSearchPS(InputXCoordinate, InputYCoordinate,
+     &         OutputNode)
+
+       use sizes, only : myproc
+       use global, only : NScreen, ScreenUnit, srchdp, tree,
+     &       kdresults, DEBUG, screenMessage, allMessage,
+     &       setMessageSource, unsetMessageSource
+       use mesh, only : nm, x, y, rmax, dp
+       use adcirc_mod, only : adcirc_terminate
+       use kdtree2_module
+#ifdef CMPI
+       use messenger, only : msg_fini
+#endif
+
+       IMPLICIT NONE
+
+       REAL(8), INTENT(IN) :: InputXCoordinate    ! cartesian/proj
+       REAL(8), INTENT(IN) :: InputYCoordinate    ! cartesian/proj
+       INTEGER, INTENT(OUT) :: OutputNode
+
+       INTEGER :: Element
+       INTEGER :: ielm(3), itc, iek
+       REAL(8) :: X1, X2, X3, X4, Y1, Y2, Y3, Y4
+       REAL(8) :: Xsta, Ysta
+       REAL(8) :: A1, A2, A3, AE, AREASK, AA
+       REAL(8) :: SD1, SD2, SD3, SD12, SD13, SD23
+       REAL(8) :: DP1, DP2, DP3
+       REAL(8) :: ELMMIN(2), XELM(3), YELM(3), DPELM(3), DIST
+       LOGICAL :: ElementFound ! .true. = corresponding element is found
+       LOGICAL :: KeepSearch ! .true. = minimum distance not found yet
+
+       REAL(8), PARAMETER :: Tolerance = 1.0d-5 ! area diff for match
+C
+       call setMessageSource("kdtSearchPS")
+#if defined(READ_INPUT_TRACE) || defined(ALL_TRACE)
+       call allMessage(DEBUG,"Enter.")
+#endif
+       ElementFound = .false.
+       KeepSearch = .false.
+
+       Xsta = InputXCoordinate
+       Ysta = InputYCoordinate
+
+       CALL kdtree2_n_nearest(tp=tree,qv=(/Xsta,Ysta/),
+     &                   nn=srchdp,results=KDRESULTS)
+
+C..    Check to see if the points lies within rmax of any of these
+C       elements.
+
+       itc = 1
+       elmmin = MINVAL(SQRT(KDRESULTS(1:srchdp)%dis)
+     &       - RMAX(KDRESULTS(1:srchdp)%idx) )
+
+       IF (elmmin(1).LE.0.0d0) THEN
+        ! Point lies within search radius of an element - loop
+        ! through the elements in the search list
+         DO WHILE ((ElementFound.EQV..false.).AND.(itc.LE.srchdp))
+           iek = KDRESULTS(itc)%idx ! Current search element number
+           ! Get the distance from this point to the center of the
+           ! current element
+           dist = SQRT(KDRESULTS(itc)%dis)
+           ! If the distance is less than or equal to rmax
+           ! (rmax = 1.5*element radius) then the point is near
+           ! the element and might be in the element
+           ! Proceed with the weights test
+           IF (dist-rmax(iek).LE.0.0d0) THEN
+             ! Get the shape function for this element
+             ielm(:) = NM(iek,(/1,2,3/)) ! element's node number
+             xelm(:) = X(ielm(:))  ! element's vertex x-values
+             yelm(:) = Y(ielm(:))  ! element's vertex y-values
+             X1 = xelm(1)
+             X2 = xelm(2)
+             X3 = xelm(3)
+             Y1 = yelm(1)
+             Y2 = yelm(2)
+             Y3 = yelm(3)
+             A1 = (Xsta-X3)*(Y2-Y3) + (X2-X3)*(Y3-YSta)
+             A2 = (Xsta-X1)*(Y3-Y1) - (YSta-Y1)*(X3-X1)
+             A3 = (Ysta-Y1)*(X2-X1) - (XSta-X1)*(Y2-Y1)
+             AA = ABS(A1) + ABS(A2) + ABS(A3)
+             AREASK=X2*Y3+X1*Y2+X3*Y1-Y1*X2-Y2*X3-Y3*X1
+             AE = ABS(AA-AREASK)/AREASK
+             IF (AE.LT.Tolerance) THEN
+               ! Do not calculate distances and find nearest
+               ! node until you've found the point within the
+               ! domain.
+               ElementFound = .true.
+               dpelm(:) = dp(ielm(:))
+               dp1 = dpelm(1)
+               dp2 = dpelm(2)
+               dp3 = dpelm(3)
+               SD1 = (X1-Xsta)**2 + (Y1-Ysta)**2
+               SD2 = (X2-Xsta)**2 + (Y2-Ysta)**2
+               SD3 = (X3-Xsta)**2 + (Y3-Ysta)**2
+               ! First check for any zero lengths - point is ADCIRC node
+               IF (SD1 .EQ. 0.d0) THEN
+                  OutputNode = ielm(1)
+               ELSE IF (SD2 .EQ. 0.d0) THEN
+                  OutputNode = ielm(2)
+               ELSE IF (SD3 .EQ. 0.d0) THEN
+                  OutputNode = ielm(3)
+               ELSE
+                  KeepSearch = .true.
+                  SD12 = ABS(SD1-SD2)/SD1
+                  SD13 = ABS(SD1-SD3)/SD1
+                  SD23 = ABS(SD2-SD3)/SD2
+               END IF
+               IF (KeepSearch) THEN
+                  ! Check each tolerance to see if any lengths are equal
+                  IF (SD12.LT.Tolerance) THEN
+                     IF (SD13.LT.Tolerance) THEN
+                     ! PS is equidistant from all nodes, check
+                     ! bathymetry - Bathymetry is positive and
+                     ! topography is negative
+                       IF ((dp1.GE.dp2).AND.(dp1.GE.dp3)) THEN
+                         OutputNode = ielm(1)
+                       ELSE IF ((dp2.GE.dp1).AND.(dp2.GE.dp3)) THEN
+                         OutputNode = ielm(2)
+                       ELSE
+                         OutputNode = ielm(3)
+                       END IF
+                     ELSE
+                     ! PS is equidistant from nodes 1 and 2
+                       IF (dp1.GE.dp2) THEN
+                         OutputNode = ielm(1)
+                       ELSE
+                         OutputNode = ielm(2)
+                       END IF
+                     END IF
+                  ELSE IF (SD13.LT.Tolerance) THEN
+                  ! PS is equidistant from nodes 1 and 3
+                     IF (dp1.GE.dp3) THEN
+                       OutputNode = ielm(1)
+                     ELSE
+                       OutputNode = ielm(3)
+                     END IF
+                  ELSE IF (SD23.LT.Tolerance) THEN
+                  ! PS is equidistant from nodes 2 and 3
+                     IF (dp2.GE.dp3) THEN
+                       OutputNode = ielm(2)
+                     ELSE
+                       OutputNode = ielm(3)
+                     END IF
+                  ! There are no equal distances, find the shortest
+                  ELSE IF ((SD1.LT.SD2).AND.(SD1.LT.SD3)) THEN
+                     OutputNode = ielm(1)
+                  ELSE IF ((SD2.LT.SD1).AND.(SD2.LT.SD3)) THEN
+                     OutputNode = ielm(2)
+                  ELSE
+                     OutputNode = ielm(3)
+                  END IF ! End of search for the nearest node
+               END IF
+             ELSE ! not in this element - keep looking
+               itc = itc + 1
+             END IF ! End area ratio test
+           ELSE
+             ! Point is too far away from the barycenter of the
+             ! element to possibly be in the element, so move to
+             ! the next element.
+             itc = itc + 1
+           END IF !end rmax test
+         END DO ! end the while loop
+       END IF ! end within search radius test
+
+       IF (.not. ElementFound) THEN
+          OutputNode = 0
+          IF (XSta.GT.0 .AND. YSta.GT.0) THEN
+             ! Negative coordinates indicate that we intentionally
+             ! deactivated this feature during preprocessing.
+             ! Do NOT write error message.
+             IF ((NScreen.NE.0).AND.(MyProc.EQ.0)) THEN
+                WRITE(ScreenUnit,9893)
+             END IF
+             WRITE(16,9893)
+          END IF
+       END IF
+
+ 9893  FORMAT(///,1X,'!!!!!!!!!  WARNING - NONFATAL ',
+     &      'INPUT ERROR  !!!!!!!!',/,
+     &      1X,'Point Source does NOT lie within any element',
+     &      1X,'and will be deactivated.',/,
+     &      1X,'Verify input coordinates for this source.')
+
+#if defined(READ_INPUT_TRACE) || defined(ALL_TRACE)
+      CALL allMessage(DEBUG,"Return.")
+#endif
+      CALL unsetMessageSource()
+C-----------------------------------------------------------------------
+      END SUBROUTINE kdtSearchPS
 C-----------------------------------------------------------------------
 
 C-----------------------------------------------------------------------

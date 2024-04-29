@@ -40,9 +40,9 @@ C----------------------------------------------------------------------
       !    2 D   D A T A
       !
 #ifdef CSWAN
-      integer, parameter :: numOutputDescript2D = 48
+      integer, parameter :: numOutputDescript2D = 52
 #else
-      integer, parameter :: numOutputDescript2D = 34
+      integer, parameter :: numOutputDescript2D = 38
 #endif
 
       type descript2D_ptr_t
@@ -90,6 +90,13 @@ Cobell Added a descript for time varying weir tracking
       type(OutputDataDescript_t), target :: dynamicWaterLevelCorrectionDescript      
       type(OutputDataDescript_t), target :: dynamicWaterLevelCorrectionStaDescript      
       type(OutputDataDescript_t), target :: labelsDescript
+      ! kmd v55: adding output for precipitation
+      type(OutputDataDescript_t), target :: RainDescript
+      type(OutputDataDescript_t), target :: RainStaDescript
+      type(OutputDataDescript_t), target :: RainAppDescript
+      type(OutputDataDescript_t), target :: RainTotDescript
+
+
 
 C     jgf48.03 Full domain arrays used when writing globalio output.
       real(8), allocatable, target :: et00_g(:)
@@ -124,7 +131,15 @@ C     jgf48.03 Full domain arrays used when writing globalio output.
       real(8), allocatable, target :: windDragOut_g(:)
       ! jgf: Added support for water level offset
       real(8), allocatable, target :: dynamicWaterLevelCorrection2_g(:)
-      real(8), allocatable, target :: dynamicWaterLevelCorrectionSta_g(:)
+      real(8), allocatable, target :: dynamicWaterLevelCorrectionSta_g(:) 
+!kmd- v55 added for precipitation
+      real(8), allocatable, target :: RainStaOUT_g(:)
+      real(8), allocatable, target :: totalrain_g(:)
+      real(8), allocatable, target :: totalrainapp_g(:)
+      real(8), allocatable, target :: rainfallcurr_g(:) ! DW: for recording      
+
+
+
       !
       !  H A R M O N I C   A N A L Y S I S   D A T A
       !
@@ -378,7 +393,10 @@ C----------------------------------------------------------------------
      &   dynamicWaterLevelCorrectionSpoolCounter, dynamicWaterLevelCorrection2, 
      &   usingdynamicWaterLevelCorrection, dynamicWaterLevelCorrectionStaSpoolCounter, 
      &   dynamicWaterLevelCorrectionFilePos, dynamicWaterLevelCorrectionSta,
-     &   dynamicWaterLevelCorrectionStaFilePos
+     &   dynamicWaterLevelCorrectionStaFilePos,
+     &   ncrain, totalrain, totalrainapp, rain00, igrp, irainstp, ! kmd -v55 added for precipitation
+     &   nscour, nscougr, rainfallcurr
+
       USE ADC_CONSTANTS, ONLY: PRBCKGRND
 
       USE MESH, ONLY : NP, NE, DP, NM, ICS, labels
@@ -449,24 +467,29 @@ C
       ptr(32)%descript2D => windDragDescript
       ptr(33)%descript2D => dynamicWaterLevelCorrectionDescript
       ptr(34)%descript2D => dynamicWaterLevelCorrectionStaDescript
-
+      ptr(35)%descript2D => RainStaDescript
+      ptr(36)%descript2D => RainAppDescript
+      ptr(37)%descript2D => RainTotDescript
+      ptr(38)%descript2D => RainDescript
 !... For SWAN, there are additional output arrays
 #ifdef CSWAN
-      ptr(35)%descript2D => SwanHSDescript 
-      ptr(36)%descript2D => SwanHSMaxDescript
-      ptr(37)%descript2D => SwanDIRDescript
-      ptr(38)%descript2D => SwanDIRMaxDescript
-      ptr(39)%descript2D => SwanTM01Descript
-      ptr(40)%descript2D => SwanTM01MaxDescript
-      ptr(41)%descript2D => SwanTPSDescript
-      ptr(42)%descript2D => SwanTPSMaxDescript
-      ptr(43)%descript2D => SwanWindDescript
-      ptr(44)%descript2D => SwanWindMaxDescript
-      ptr(45)%descript2D => SwanTM02Descript
-      ptr(46)%descript2D => SwanTM02MaxDescript
-      ptr(47)%descript2D => SwanTMM10Descript
-      ptr(48)%descript2D => SwanTMM10MaxDescript
+      ptr(39)%descript2D => SwanHSDescript 
+      ptr(40)%descript2D => SwanHSMaxDescript
+      ptr(41)%descript2D => SwanDIRDescript
+      ptr(42)%descript2D => SwanDIRMaxDescript
+      ptr(43)%descript2D => SwanTM01Descript
+      ptr(44)%descript2D => SwanTM01MaxDescript
+      ptr(45)%descript2D => SwanTPSDescript
+      ptr(46)%descript2D => SwanTPSMaxDescript
+      ptr(47)%descript2D => SwanWindDescript
+      ptr(48)%descript2D => SwanWindMaxDescript
+      ptr(49)%descript2D => SwanTM02Descript
+      ptr(50)%descript2D => SwanTM02MaxDescript
+      ptr(51)%descript2D => SwanTMM10Descript
+      ptr(52)%descript2D => SwanTMM10MaxDescript
 #endif
+
+
 
       ! jgf51.21.24: Set some defaults
       do i=1,numOutputDescript2D
@@ -1114,6 +1137,68 @@ C... v49.64.01 tcm -- added for ice stations
          IceStaDescript % writeFlag         = .false.
       endif
 
+      ! fort.903
+      ! June 2023: DW, record global rainfall domain  
+      IF ( (MNPROC.gt.1) .and. (MyProc.eq.0) .and. (ncrain.ne.0)
+     &       .and. (.NOT. WRITE_LOCAL_FILES)  ) THEN
+         if (ncrain .ne. 0)  then
+           CALL REAL_FIELD_ALLOCATE( NOUTGE, RainfallCurr_g, NP_G ) ;
+         endif
+         ! ALLOCATE(CICEOUT_g(NP_G))
+      ENDIF
+      RainDescript % lun                  = 903
+      RainDescript % specifier            = NOUTGE
+      RainDescript % startTimeStep           = NTCYSGE
+      RainDescript % endTimeStep             = NTCYFGE
+      RainDescript % outputTimeStepIncrement = NSPOOLGE
+      RainDescript % spoolCounter            => NSCOUGR 
+      RainDescript % filepos                 => IGRP
+      RainDescript % writerFormats(1:5)   = (/ 1, 3, 4, 5, 7 /)
+      RainDescript % array                => RainfallCurr
+      RainDescript % array_g              => RainfallCurr_g
+      RainDescript % field_name           = 'rainfallrate'
+      if (ncrain.eq.0) then
+         RainDescript % writeFlag         = .false.
+      endif
+
+      ! fort.94  kmd v55 Added for Station Precipitation Output
+      IF ((MNPROC.GT.1).AND.(MYPROC.EQ.0).and.(ncrain.ne.0)
+     &     .and. (.NOT. WRITE_LOCAL_FILES) ) THEN
+         call REAL_FIELD_ALLOCATE(NOUTE,RainStaOUT_g,NSTAE_g)
+      END IF
+      NSCOUR = NSCOUE  !same as elevation but need own spool
+      RainStaDescript % lun                     = 901 
+      RainStaDescript % specifier               = NOUTE
+      RainStaDescript % num_fd_records          = NSTAE_G
+      RainStaDescript % num_records_this        = NSTAE
+      RainStaDescript % imap                    => IMAP_STAE_LG
+      RainStaDescript % array                   => RAIN00
+      RainStaDescript % array_g                 => RainStaOUT_g
+      RainStaDescript % interped_array          => totalrainapp
+      RainStaDescript % ConsiderWetDry          = .FALSE.
+      RainStaDescript % field_name              = 'Applied_rainfall'
+      RainStaDescript % isStation               = .TRUE.
+      RainStaDescript % startTimeStep           = NTCYSE
+      RainStaDescript % endTimeStep             = NTCYFE
+      RainStaDescript % outputTimeStepIncrement = NSPOOLE
+      RainStaDescript % spoolCounter            => NSCOUR
+      RainStaDescript % filepos                 => IRAINSTP
+      RainStaDescript % elements                => NNE
+      RainStaDescript % interp_fac1             => STAIE1
+      RainStaDescript % interp_fac2             => STAIE2
+      RainStaDescript % interp_fac3             => STAIE3
+      IF (ICS.eq.1) THEN
+         RainStaDescript % x_coord              => XEL
+         RainStaDescript % y_coord              => YEL
+      ELSE
+         RainStaDescript % x_coord              => SLEL
+         RainStaDescript % y_coord              => SFEL
+      END IF
+      IF (NCRAIN.EQ.0) THEN
+        RainStaDescript % writeFlag             =.FALSE.
+      END IF
+
+
       ! Casey 090302: Copied these lines for the rads.64 file.
       ! tcm v50.75 removed ifdef cswan to allow for use whenever nrs=3 or nrs=4
       ! rads.64
@@ -1394,6 +1479,58 @@ C      IF (mnproc.gt.1) THEN
       endif
       RSNMAX(:) = -99999.d0
       RSNMAX_Time(:) = -99999.d0
+
+!     totalrainapp.63  cms-v55 added for applied (accumulated) rainfall
+      IF (MNPROC.GT.1 .and. (MyProc.eq.0)
+     &      .and. (.NOT. WRITE_LOCAL_FILES)  ) THEN
+         IF ( NCRAIN .NE. 0 ) THEN
+            ALLOCATE(totalrainapp_g(NP_G))
+            totalrainapp_g(:) = 0.D0
+         END IF   
+      END IF
+      RainAppDescript % lun                  = 324
+      RainAppDescript % specifier            = NOUTGE
+      RainAppDescript % array                => totalrainapp
+      RainAppDescript % array_g              => totalrainapp_g
+      RainAppDescript % field_name           = 'Applied_rainfall'
+      RainAppDescript % file_basename        = 'totalrainapp'
+      RainAppDescript % file_extension       = 63
+      RainAppDescript % writeFlag            = .FALSE.
+      RainAppDescript % minmax_timestamp     = .false.
+      IF (NCRAIN.NE.0) THEN
+         RainAppDescript % readMaxMin        = .TRUE.
+      END IF
+      IF (RainAppDescript % specifier.eq.XDMF) THEN
+         RainAppDescript % specifier         = ASCII
+      END IF
+      RainAppDescript % readMaxMin        = .TRUE. ! Do not record
+
+
+!     totalrain.63  kmd-v55 added for total accumulated rainfall
+      IF (  (MNPROC.GT.1 ) .and. (MyProc.eq.0)
+     &      .and. (.NOT. WRITE_LOCAL_FILES)  ) THEN
+         IF ( NCRAIN .NE. 0 ) THEN
+            ALLOCATE(totalrain_g(NP_G))
+            totalrain_g(:) = 0.D0
+         END IF
+      END IF
+      RainTotDescript % lun                  = 325
+      RainTotDescript % specifier            = NOUTGE
+      RainTotDescript % array                => totalrain
+      RainTotDescript % array_g              => totalrain_g
+      RainTotDescript % field_name           = 'Accumulated_rainfall'
+      RainTotDescript % file_basename        = 'totalrain'
+      RainTotDescript % file_extension       = 63
+      RainTotDescript % writeFlag            = .FALSE.
+      RainTotDescript % minmax_timestamp     = .false.
+      IF (NCRAIN.NE.0) THEN
+         RainTotDescript % readMaxMin        = .TRUE.
+      END IF
+      IF (RainTotDescript % specifier.eq.XDMF) THEN
+         RainTotDescript % specifier         = ASCII
+      END IF
+      RainTotDescript % readMaxMin        = .FALSE. ! Do not record
+
 
 !     ESLNodes.63
       ! DW
@@ -1796,7 +1933,7 @@ C----------------------------------------------------------------------
       USE SIZES, ONLY : INPUTDIR, NBYTE, MNWPROC, MYPROC, MNPROC,
      &                  GLOBALDIR, OFF
       USE GLOBAL, only: nt, noutge, noutgv, noutgw, nws, nrs,
-     &   inundationOutput
+     &   inundationOutput, ncrain
 #ifdef CSWAN
      &   ,SWAN_OutputHS, SWAN_OutputDIR, SWAN_OutputTM01,
      &   SWAN_OutputTPS, SWAN_OutputTM02, SWAN_OutputTMM10, SWAN_OutputWind
@@ -6415,7 +6552,8 @@ C-----------------------------------------------------------------------
       use global, only : nodecode, eta2, uu2, vv2, pr2,
      &  rsnx2, rsny2, etamax, etamax_time, umax, umax_time, prmin,
      &  prmin_time, wvnoutmax, wvnoutmax_time, rsnmax, rsnmax_time,
-     &  wvnxout, wvnyout, nrs, nws, noutge, noutgv, noutgw
+     &  wvnxout, wvnyout, nrs, nws, noutge, noutgv, noutgw,
+     &  ncrain, totalrain     !kmd added for precip 
       use mesh, only : np
       implicit none
       real(8), intent(in) :: timeloc ! time in s since cold start

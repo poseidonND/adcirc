@@ -252,7 +252,9 @@ C
      &   TKM, NPERSEG, NTIP, NNPERBC, IPERCONN, VIDispDXOH,
      &   VIDispDYOH, IFSFM, IFNL_HDP, CGWCE_HDP, CAliDisp, H0, ALPHAL, windlim,
      &   usingDynamicWaterLevelCorrection, dynamicWaterLevelCorrection1,
-     &   COEFDTemp, COEFDTempMem  ! Added for VED1D  08-11-2022 SB
+     &   COEFDTemp, COEFDTempMem,  ! Added for VED1D  08-11-2022 SB
+     &   RainfallCurr, RainODT, totalrain, PSCurr, PSODT,
+     &   NCRAIN, NCPSOURCE, CPS_RAMP ! kmd-v53 -- added for precipitation and point source terms
 #ifdef CMPI
      &    , dumy1, dumy2, rnp_global
 #endif
@@ -340,7 +342,9 @@ C... SB
       REAL(8) U1N1,U1N2,U1N3, U1Avg
       REAL(8) V1N1,V1N2,V1N3, V1Avg
       REAL(8) WSXAvg, WSYAvg
-      REAL(8) AreaIE, AreaIE2, AreaIE4
+      REAL(8) ISN1, ISN2, ISN3, IN1, IN2, IN3  ! precipitation
+      REAL(8) PSSN1, PSSN2, PSSN3, PSN1, PSN2, PSN3  ! point source
+      REAL(8) AreaIE, AreaIE2, AreaIE3,AreaIE4
       REAL(8) FDX1, FDX2, FDX3, FDY1, FDY2, FDY3
       REAL(8) FDXX1, FDXX2, FDXX3, FDYY1, FDYY2, FDYY3
       REAL(8) TimeLoc, TimeH
@@ -375,7 +379,9 @@ C...... DW
       REAL(8):: ABC00_EAN1, ABC00_EAN2, ABC00_EAN3
       REAL(8):: fwsx1, fwsx2, fwsx3
       REAL(8):: fwsy1, fwsy2, fwsy3
-      REAL(8) :: SPM1, SPM2, SPM3 
+      REAL(8) :: SPM1, SPM2, SPM3
+      REAL(8):: rdpflag ; ! DW
+
       LOGICAL :: ETA_SPONGE = .false., GWCE_SPONGE = .false.
       REAL(8) :: Ma2, Cfac = 1.0D0, CfacS0 = 1.0D0
       INTEGER :: NNBB1, NNBB2  ! Added for VEW1D  08-11-2022 SB
@@ -1194,10 +1200,52 @@ C
             BSYN2=BSY1(NM2)
             BSYN3=BSY1(NM3)
          ENDIF
+C...kmd -v53 -- added precipitation source term
+C        use nodecode to zero out for dry areas
+         IF(NCRAIN .NE. 0) THEN
+            rdpflag = NC1*merge( 1.0D0, 0.0D0, DP(NM1) > 0.D0 ) ;    
+            IN1=RainfallCurr(NM1)*rdpflag !MTC/DW Corrected
+            ISN1=RainODT(NM1)*rdpflag 
+
+            rdpflag = NC2*merge( 1.0D0, 0.0D0, DP(NM2) > 0.D0 ) ; 
+            IN2=RainfallCurr(NM2)*rdpflag 
+            ISN2=RainODT(NM2)*rdpflag
+
+            rdpflag = NC3*merge( 1.0D0, 0.0D0, DP(NM3) > 0.D0 ) ; 
+            IN3=RainfallCurr(NM3)*rdpflag
+            ISN3=RainODT(NM3)*rdpflag 
+           
+
+         ELSE
+            IN1=0.D0
+            IN2=0.D0
+            IN3=0.D0
+            ISN1=0.D0
+            ISN2=0.D0
+            ISN3=0.D0
+         END IF
+C...kmd -v53 -- added point source term
+C        use nodecode to zero out for dry areas
+         IF(NCPSOURCE .NE. 0) THEN
+            PSN1=PSCurr(NM1)*NC1
+            PSSN1=PSODT(NM1)*NC1
+            PSN2=PSCurr(NM2)*NC2
+            PSSN2=PSODT(NM2)*NC2
+            PSN3=PSCurr(NM3)*NC3
+            PSSN3=PSODT(NM3)*NC3
+         ELSE
+            PSN1=0.D0
+            PSN2=0.D0
+            PSN3=0.D0
+            PSSN1=0.D0
+            PSSN2=0.D0
+            PSSN3=0.D0
+         END IF
 
          AreaIE2=Areas(IE)               !2A
          AreaIE=AreaIE2/2.d0             ! A
          AreaIE4=2.d0*AreaIE2            !4A
+         AreaIE3=AreaIE/3.D0             !A/3 for precip and point
          SFacAvg= SFacEle(IE)
 C..... DW
          ! derivative: accomodate corrected spherical coordinate
@@ -1546,6 +1594,14 @@ C..... DW: begin
      &                OffDiag*(ABC00_EAN2*SPM2 + ABC00_EAN3*SPM3))*MsFacRS_ABC00
 C..... END DW
 C
+C...     kmd-v53 -- Precipitation: time derivative and G terms
+C     &       +AREAIE3*(ISN1+Tau0Avg*IN1)
+     &         +AREAIE3*SPM1*(ISN1+Tau0Avg*IN1) !DW made compatible with GWCE used in v55
+C
+C...     kmd-v53 -- Point source: time derivative and G terms
+C     &       +AREAIE3*(PSSN1+Tau0Avg*PSN1)
+     &         +AREAIE3*SPM1*(PSSN1+Tau0Avg*PSN1) ! DW changed to make it compatible with v55
+
 
 C...     Assemble forcing for node NM2 (local index j=2)
          Temp_LV_A2=
@@ -1572,7 +1628,15 @@ C..... DW: begin
      &                 OffDiag*(ABC00_EAN1*SPM1 + ABC00_EAN3*SPM3))*MsFacRS_ABC00
 C..... END DW
 C
+C...     kmd-v53 -- Precipitation: time derivative and G terms: made
+C                   compatible with GWCE in v55
+C     &       +AREAIE3*(ISN2+Tau0Avg*IN2)
+     &       +AREAIE3*SPM2*(ISN2+Tau0Avg*IN2)
 
+C
+C...     kmd-v53 -- Point source: time derivative and G terms
+C     &       +AREAIE3*(PSSN2+Tau0Avg*PSN2)
+     &       +AREAIE3*SPM2*(PSSN2+Tau0Avg*PSN2)
 
 C...     Assemble forcing for node NM3 (local index j=3)
 
@@ -1600,6 +1664,16 @@ C..... DW: begin, absorbing layer
      &               OffDiag*(ABC00_EAN1*SPM1 + ABC00_EAN2*SPM2))*MsFacRS_ABC00
 C..... END DW
 C
+C...     kmd-v53 -- Precipitation: time derivative and G terms: DW -
+C                   compatible with v55
+C     &       +AREAIE3*(ISN3+Tau0Avg*IN3)
+     &       +AREAIE3*SPM3*(ISN3+Tau0Avg*IN3)
+
+C
+C...     kmd-v53 -- Point source: time derivative and G terms
+C     &       +AREAIE3*(PSSN3+Tau0Avg*PSN3)
+     &       +AREAIE3*SPM3*(PSSN3+Tau0Avg*PSN3)
+
 
 C...     Put these partial products into further elemental storage for a vector computer
 C...     These will be put into nodal storage outside of the elemental loop

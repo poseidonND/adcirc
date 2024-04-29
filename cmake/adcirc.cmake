@@ -29,6 +29,7 @@ if(BUILD_ADCIRC)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/wind.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/owiwind.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/owiwind_netcdf.F
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/owi_rain.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/rs2.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/owi_ice.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/itpackv.F
@@ -60,6 +61,7 @@ if(BUILD_ADCIRC)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/gl2loc_mapping.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/couple2baroclinic3D.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/subgridLookup.F
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/river.F
       )
 
   add_executable(adcirc ${ADCIRC_SOURCES})

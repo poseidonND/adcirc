@@ -258,12 +258,26 @@ c.
       
       real(8), allocatable, target :: wvnxout(:) ! output wind velocity in x-dir at each node 
       real(8), allocatable, target :: wvnyout(:) ! output wind velocity in y-dir at each node 
-
+     
       real(8),allocatable :: gwce_lv(:)
 
+c...  kmd - v53 - added output variables for precipitation
+      real(8), allocatable, target :: RAIN00(:)
+
+      REAL(8), ALLOCATABLE :: QN_R(:)  !AT V56 RIVER CORRECTION
+      REAL(8), ALLOCATABLE :: QN2_R(:)
+      REAL(8), ALLOCATABLE :: NX_R(:)
+      REAL(8), ALLOCATABLE :: NY_R(:)
+      REAL(8), ALLOCATABLE :: QX1_R(:)
+      REAL(8), ALLOCATABLE :: QY1_R(:)
+      REAL(8), ALLOCATABLE :: QX2_R(:)
+      REAL(8), ALLOCATABLE :: QY2_R(:)
+      REAL(8), ALLOCATABLE :: TAUX_R(:)
+      REAL(8), ALLOCATABLE :: TAUY_R(:)
 
       
-#if defined CSWAN || defined ADCSWAN     
+#if defined CSWAN || defined ADCSWAN    
+
       !...Local SWAN Arrays
       REAL(8), ALLOCATABLE, TARGET      :: SWAN_HSOut(:)
       REAL(8), ALLOCATABLE, TARGET      :: SWAN_DIROut(:)
@@ -370,6 +384,20 @@ C- DMW
       REAL(8),ALLOCATABLE ::   RSNX1(:),RSNY1(:),RSNX2(:),RSNY2(:)
       REAL(8),ALLOCATABLE ::   CICE1(:),CICE2(:)   !v49.64.01 tcm -- added
                                                     !for ice concentration
+      ! Precipitation information - kmd v53
+      real(8),allocatable :: rain1(:), rain2(:)      ! input rainfall
+      real(8),allocatable :: rainfallold(:)          ! old rainfall
+      real(8),allocatable :: rainodt(:)     ! temporal integration
+      real(8),allocatable, target :: totalrain(:)    ! accum rainfall
+      real(8),allocatable, target :: totalrainapp(:) ! applied rainfall
+      real(8),allocatable, target :: rainfallcurr(:) ! current rainfall
+
+      ! Point source information - cms v53
+      real(8),allocatable :: ps1(:), ps2(:)       ! input point sources
+      real(8),allocatable :: pscurr(:), psold(:), psodt(:) !temporal PS
+      real(8),allocatable, target :: divbytotalarea(:) !wet area recipr
+      integer(8),allocatable :: isactive(:)   ! flag for active sources
+      integer(8),allocatable :: nearnode(:)   ! adcirc node to apply src    
       REAL(8),ALLOCATABLE, TARGET :: RSNMax(:) ! v46.50 sb 11/11/2006
 
       REAL(8),ALLOCATABLE :: TK(:)     ! WJP bottom frictiom
@@ -548,11 +576,13 @@ Corbitt 120322: Create Elemental Versions of IFNLCAT and IFNLCT
       integer, target :: itau0p ! position in tau0 output file for variable tau0
       integer, target :: igsp ! sponge layer output
       integer, target :: igdp ! debug elevation
+      integer, target :: igrp ! precipitation position
       ! station file position counters
       integer, target :: ivstp ! file position in velocity station file
       integer, target :: iwstp ! file position in wind velocity station file
       integer, target :: ipstp ! position in barometric pressure station file
-      integer, target :: iestp ! file position in station elevation file 
+      integer, target :: iestp ! file position in station elevation file
+      integer, target :: irainstp   !file position for precipitation
       integer, target :: ig_tvw ! file position in weir elevation file
       integer, target :: nodeCodeOutFilePos
       integer, target :: noffOutFilePos
@@ -575,6 +605,7 @@ Corbitt 120322: Create Elemental Versions of IFNLCAT and IFNLCT
       INTEGER  NDSETSC
       INTEGER  NCChange !jgf45.06 flag indicating wetting / drying has occurred
       INTEGER  NDSETSE, NDSETSV, NDSETSW, NDSETS_TVW
+      INTEGER  NDSETSR ! precip and point source
       INTEGER  NHSINC, NHSTAR
       LOGICAL :: NHOUTONCE = .false.
 !  tcm v50.75 removed ifdef cswan to allow for use whenever nrs=3 or nrs=4
@@ -586,6 +617,7 @@ Casey 090302: Added a variable for output of radiation stress gradients.
       INTEGER, TARGET :: NSCOUC, NSCOUE, NSCOUGC, NSCOUGE, NSCOUGV ! output spool counters
       INTEGER, TARGET :: NSCOUGW, NSCOURS, NSCOUGP, NSCOUM, NSCOUV ! output spool counters
       INTEGER, TARGET :: NSCOUGI, NSCOUGT, NSCOUGS  ! output spool counters
+      INTEGER, TARGET :: NSCOUR, NSCOUGR  !ioutput spool for precip
       INTEGER, TARGET :: NSCOU_TVW ! output spool counters
       INTEGER, TARGET :: NSCOUP ! output spool counter for fort.71 (bar. press. sta.)
       INTEGER, TARGET :: NSCOUI ! output spool counter for fort.91 (ice sta.)     
@@ -600,6 +632,7 @@ Casey 090302: Added a variable for output of radiation stress gradients.
       INTEGER :: NSPOOLGV, NSPOOLGW, NSPOOLM, NSPOOL_TVW ! output increments
       INTEGER  NSTAC, NSTAM, NTCYFC, NTCYFGC, NTCYFGE
       INTEGER  NTCYFGV, NTCYFGW
+      INTEGER  NTCYFGR, NTCYSGR, NTRSPR     ! precipitation
       INTEGER  NTCYFM, NTCYSC, NTCYSGC, NTCYSGE
       INTEGER  NTCYSGV, NTCYSGW, NTCYSM
 
@@ -698,6 +731,11 @@ C     kmd48.33bc - added variables for 3D boundary conditions
       REAL(8) :: BTIMINC ! TIME INCREMENT (SECONDS) FOR BATHYMETRY CHANGES USED FOR TIME VARYING BATHYMETRY
       REAL(8) :: BCHGTIMINC ! time increment (seconds) over which bathymetry changes during a btimeinc interval
       REAL(8),ALLOCATABLE, TARGET ::  DP00(:)
+
+! KMD v53 Additions for precipitation and point source
+      INTEGER :: NCRAIN, NCPSOURCE
+      REAL(8) :: CRAIN_TIMINC, CRAIN_TIME1, CRAIN_TIME2
+      REAL(8) :: CPS_TIMINC, CPS_RAMP, CPS_TIME1, CPS_TIME2
 
 ! TCM v52.30.01 ADDITIONS FOR USING SMAGORINSKY eddy MODEL OPTIONS
       REAL(8) :: SMAG_UPPER_LIM = 100.d0  ! m^2/s (default upper limit)
@@ -1365,7 +1403,7 @@ C...
 C...Allocate space for arrays used for station elevation output
 C...
       SUBROUTINE ALLOC_MAIN7()
-      USE SIZES, ONLY : MNSTAE
+      USE SIZES, ONLY : MNSTAE, MNVEL
       IMPLICIT NONE
 C
       ALLOCATE ( NNE(MNSTAE),ET00(MNSTAE))
@@ -1375,6 +1413,14 @@ C
 c...  tcm v50.66.01 added for time varying bathymetry
       IF (NDDT.NE.0) ALLOCATE (DP00(MNSTAE) )
 C
+C...  kmd v53 added for precipitation station output
+      IF (NCRAIN.NE.0) ALLOCATE ( RAIN00(MNSTAE) )
+      ALLOCATE(NX_R(MNVEL),NY_R(MNVEL),TAUX_R(MNVEL),TAUY_R(MNVEL))
+      ALLOCATE(QX1_R(MNVEL),QY1_R(MNVEL))        ! AT RIVER CORRECTION
+      ALLOCATE(QX2_R(MNVEL), QY2_R(MNVEL))
+      ALLOCATE(QN_R(MNVEL))
+      ALLOCATE(QN2_R(MNVEL))
+
       RETURN
       END SUBROUTINE ALLOC_MAIN7
 
@@ -1544,6 +1590,65 @@ C...
       DP2(:) = 0.D0
 
       END SUBROUTINE ALLOC_MAIN13
+
+C     ----------------------------------------------
+C     BEGIN PRECIPITATION AND POINT SOURCE ADDITIONS
+C...
+C...  cms v53 Additions for precipitation (15a)
+C...  and point source (15b) array allocations
+
+C...  Allocate space for Precipitation Sources
+      SUBROUTINE ALLOC_MAIN15a()
+      USE SIZES, ONLY : MNP
+      IMPLICIT NONE
+
+      IF (NCRAIN .NE. 0) THEN
+         ALLOCATE ( RAIN1(MNP), RAIN2(MNP) )
+         ALLOCATE ( RainfallCurr(MNP), RainfallOld(MNP) )
+         ALLOCATE ( RainODT(MNP) )
+         ALLOCATE ( totalrain(MNP) )
+         ALLOCATE ( totalrainapp(MNP) )
+         RAIN1(:) = 0.d0
+         RAIN2(:) = 0.d0
+         RainfallCurr(:) = 0.d0
+         RainfallOld(:) = 0.d0
+         RainODT(:) = 0.d0
+         totalrain(:) = 0.d0
+         totalrainapp(:) = 0.d0
+      END IF
+
+      RETURN
+      END SUBROUTINE ALLOC_MAIN15a
+
+C...  Allocate space for Point Sources
+      SUBROUTINE ALLOC_MAIN15b()
+      USE SIZES, ONLY : MNP, numPS
+      IMPLICIT NONE
+
+      ! First set of allocate statements are utilized by
+      ! all the options for point source terms (test for
+      ! NCPSOURCE is done in calling routine
+      ALLOCATE ( PS1(MNP), PS2(MNP) )
+      ALLOCATE ( pscurr(MNP), psold(MNP), psodt(MNP) )
+      ALLOCATE ( DivByTotalArea(MNP), isActive(MNP) )
+      PS1(:) = 0.D0
+      PS2(:) = 0.D0
+      pscurr(:) = 0.D0
+      psold(:) = 0.D0
+      psodt(:) = 0.D0
+      DivByTotalArea(:) = 0.D0
+      isActive(:) = 1  !reset in cold/hot for toNodes (option3)
+
+      ! Now arrays that only exist for options 3/4
+      ! Will need to add option 4 arrays when activate in ADCIRC
+      IF (ABS(NCPSOURCE) .GE. 3) THEN ! all >=3 lon/lat input
+         ALLOCATE ( nearNode(numPS) )
+         nearNode(:) = 0
+      END IF
+
+      RETURN
+      END SUBROUTINE ALLOC_MAIN15b
+
 
       !-----------------------------------------------------------------
       !                      S U B R O U T I N E   

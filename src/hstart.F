@@ -52,10 +52,11 @@ C
 C**************************************************************************
 C
       !USE, INTRINSIC :: IEEE_ARITHMETIC !jgfdebug ieee_is_nan()
-      USE SIZES, ONLY : inputDir, globalDir, mnproc
+      USE SIZES, ONLY : inputDir, globalDir, mnproc, numPS
       USE GLOBAL
       USE ADC_CONSTANTS, ONLY: G, PI
-      USE MESH, ONLY : DP, ICS, X, Y, NE, SLAM, SFEA, AID4
+      USE MESH, ONLY : DP, ICS, X, Y, NE, SLAM, SFEA, AID4, totalarea,
+     &    TotalAreaCalc
       USE BOUNDARIES, ONLY : NETA, NFLUXB, NFLUXF, NFLUXIB, NFLUXIBP,
      &    NOPE, NVEL, BndBCRiver, LBCODEI, NBV, BARLANHT, BARLANCFSP,
      &    IBCONN, BARINHT, BARINCFSP, BARINCFSB, PIPEHT, PIPECOEF,
@@ -79,6 +80,7 @@ C
       USE ADCIRC_MOD, ONLY : ADCIRC_Terminate
       USE WIND, ONLY : hotstartMeteorologicalForcing, rsget
       USE OWI_ICE, ONLY : NCICE1_INIT, NCICE1_GET  !tcm v49.64.01
+      USE OWI_RAIN, ONLY : NCRAIN1_INIT, NCRAIN_GET  !kmd v55
       USE RS2,ONLY : RS2INIT,RS2GET           ! sb46.28sb01 added 09/xx/2006
 C     Addition for netCDF by MCF 5/18/08 modified by jgf49.28
 #ifdef ADCNETCDF
@@ -135,8 +137,10 @@ C     jgf46.08 Fine grained ramp functions
       REAL(8) RampIntFlux1   ! Ramp for internal flux b.c.s @ITHS-1
       REAL(8) RampIntFlux2   ! Ramp for internal flux b.c.s @ITHS
       REAL(8) RampTip2    ! Ramp for tidal potential @ITHS
-      real(8) rampMete2   ! Ramp for wind and atmospheric pressure @ITHS     
+      real(8) rampMete2   ! Ramp for wind and atmospheric pressure @ITHS
       REAL(8) RampWRad2   ! Ramp for wave radiation stress @ITHS
+C     cms55.## Added point source ramp (independent of all others)
+      REAL(8) RampPS
 C     jgf46.14 Check for file existence before attempting to open.
       LOGICAL fileFound    ! .True. if the the file exists
       INTEGER ErrorIO      ! zero if file opened successfully
@@ -178,6 +182,10 @@ C     in parallel.
 C
 C     tcm v49.64.01 -- ADDED variables for Ice concentration fields
       REAL(8) PIC,CICE_TRatio  !ICE VARIABLES
+C
+C     cms v55  -- ADDED variables for precip and point sources
+      REAL(8) PSval
+      INTEGER :: nodenumPS, NHG
 C
 C     tcm v50.66.01 added variables for time varying bathymetry
       real(8) DPTMP,BTRatio
@@ -824,6 +832,14 @@ Corbitt 1203022: Added Zach''s Fix for Assigning a Start Time to Mete Ramping
          RampWRad2=0.0d0
       ENDIF
 C
+C     cms55.## Added ramp for point sources
+      !RampPS=TANH((2.D0*(ITHS)*DTDPHS/86400.D0)/CPS_RAMP)
+      IF (CPS_RAMP.GT.0.d0 ) THEN
+         RampPS = tanh((2.d0*timeloc/86400.d0)/CPS_RAMP)
+      ELSE
+         RampPS = 1.d0
+      ENDIF
+
 C     jgf48.4627 If user only requests meteorological output, then
 C     set a flag that turns off the calculation of the GWCE and
 C     momentum equations
@@ -1463,6 +1479,270 @@ C
 C----------------------ICE FIELDS-------------------------------------
 C
 C
+C---------------------RAINFALL FORCING-------------------------------
+C.. v55 - kmd - Updated the rainfall forcing for units 27, 425, 427
+C.. added this section for reading in information
+
+      IF (ABS(NCRAIN).GT.0) THEN
+! kmd - file starts from coldstart time - read until hot time
+        IF (NCRAIN.EQ.2) THEN
+          CRAIN_TIME1 = STATIM*86400.D0
+          CRAIN_TIME2 = CRAIN_TIME1 + CRAIN_TIMINC
+          OPEN(425,FILE=TRIM(INPUTDIR)//'/'//'fort.425')
+          READ(425,*) (NHG,RAIN1(I),I=1,NP)
+          READ(425,*) (NHG,RAIN2(I),I=1,NP)
+          DO IT=1,ITHS
+            TIMEIT=IT*DTDP + STATIM*86400.D0
+            IF (TIMEIT.GT.CRAIN_TIME2) THEN
+              CRAIN_TIME1 = CRAIN_TIME2
+              CRAIN_TIME2 = CRAIN_TIME2 + CRAIN_TIMINC
+              DO I=1,NP
+                 RAIN1(I)=RAIN2(I)
+              END DO
+              READ(425,*) (NHG,RAIN2(I),I=1,NP)
+            END IF
+          END DO
+          DO I=1,NP
+            RainfallCurr(I) = RAIN1(I)
+          END DO
+        END IF
+
+! kmd - adding the information for reading in from the file with
+!   information being provided from the hot start time of the simulation
+
+        IF (NCRAIN.EQ.-2) THEN
+          CRAIN_TIME1 = Timeloc
+          CRAIN_TIME2 = CRAIN_TIME1 + CRAIN_TIMINC
+          OPEN(425,FILE=TRIM(INPUTDIR)//'/'//'fort.425')
+          READ(425,*) (NHG,RAIN1(I),I=1,NP)
+          READ(425,*) (NHG,RAIN2(I),I=1,NP)
+          DO I=1,NP
+            RainfallCurr(I) = RAIN1(I)
+          END DO
+        END IF
+
+! kmd - second option is for OWI style file for rainfall
+!     that starts from the coldstart time of the simulation
+        IF (NCRAIN.EQ.12) THEN
+          CRAIN_TIME1 = STATIM*86400.D0
+          CRAIN_TIME2 = CRAIN_TIME1 + CRAIN_TIMINC
+          CALL NCRAIN1_INIT(RAIN1,NP)
+          CALL NCRAIN_GET(RAIN1,NP)
+          CALL NCRAIN_GET(RAIN2,NP)
+          DO IT=1,ITHS
+            TIMEIT=IT*DTDP + STATIM*86400.D0
+            IF (TIMEIT.GT.CRAIN_TIME2) THEN
+              CRAIN_TIME1 = CRAIN_TIME2
+              CRAIN_TIME2 = CRAIN_TIME2 + CRAIN_TIMINC
+              DO I=1,NP
+                RAIN1(I)=RAIN2(I)
+              END DO
+              CALL NCRAIN_GET(RAIN2,NP)
+            END IF
+          END DO
+          DO I=1,NP
+            RainfallCurr(I) = RAIN1(I)
+          END DO
+        END IF
+
+! kmd - third option is for OWI style file for rainfall
+!     that starts from the hotstart time of the simulation
+        IF (NCRAIN.EQ.-12) THEN
+          CRAIN_TIME1 = TimeLoc
+          CRAIN_TIME2 = CRAIN_TIME1 + CRAIN_TIMINC
+          CALL NCRAIN1_INIT(RAIN1,NP)
+          CALL NCRAIN_GET(RAIN1,NP)
+          CALL NCRAIN_GET(RAIN2,NP)
+          DO I=1,NP
+            RainfallCurr(I) = RAIN1(I)
+          END DO
+        END IF
+
+      END IF
+C
+C---------------------END RAINFALL FORCING----------------------------
+C
+C
+C-------------------BEGIN POINT SOURCE FORCING------------------------
+C.. v55 - cms - Update the point sources from units 426, 430
+C..             Read in values from files depending upon start time
+C
+      SELECT CASE(NCPSOURCE)
+C      -------------------------------------------
+      CASE (-1, -2) !files start at hotstart time
+C      -------------------------------------------
+C      Options -1 and 1: node number and intensity
+C      Options -2 and 2: node number and discharge
+C      **** for input purposes, these options are the same
+C           differences occur in timestep.F processing
+
+          OPEN(426,FILE=TRIM(INPUTDIR)//'/'//'fort.426')
+          READ(426,*) numPS
+          PS1(:) = 0.d0
+          DO I=1,numPS
+            READ(426,*) NODENUMPS,PSVAL
+            PS1(NODENUMPS)=PSVAL
+          END DO
+          READ(426,*) numPS
+          PS2(:) = 0.d0
+          DO I=1,numPS
+            READ(426,*) NODENUMPS,PSVAL
+            PS2(NODENUMPS)=PSVAL
+          END DO
+
+          CPS_TIME1 = Timeloc
+          CPS_TIME2 = CPS_TIME1 + CPS_TIMINC
+
+          IF (NCPSOURCE .EQ. -2) THEN
+             CALL TotalAreaCalc() ! Set wetted areas 1st timestep
+             DO I=1,NP
+               IF (TotalArea(I).EQ.0.d0) THEN
+                 DivByTotalArea(I)=0.d0
+               ELSE
+                 DivByTotalArea(I)=1.d0/TotalArea(I)
+               END IF
+               PSCurr(I) = RampPS*PS1(I)*3.d0*DivByTotalArea(I)
+             END DO
+          ELSE
+             DO I=1,NP
+                PSCurr(I) = RampPS*PS1(I)
+             END DO
+          END IF
+
+C      -------------------------------------------
+      CASE (1, 2)  !files start at coldstart time
+C      -------------------------------------------
+          OPEN(426,FILE=TRIM(INPUTDIR)//'/'//'fort.426')
+          READ(426,*) numPS
+          PS1(:) = 0.d0
+          DO I=1,numPS
+            READ(426,*) NODENUMPS,PSVAL
+            PS1(NODENUMPS)=PSVAL
+          END DO
+          READ(426,*) numPS
+          PS2(:) = 0.d0
+          DO I=1,numPS
+            READ(426,*) NODENUMPS,PSVAL
+            PS2(NODENUMPS)=PSVAL
+          END DO
+
+          CPS_TIME1 = STATIM*86400.d0
+          CPS_TIME2 = CPS_TIME1 + CPS_TIMINC
+          DO IT=1,ITHS
+            TIMEIT=IT*DTDP + STATIM*86400.D0
+            IF (TIMEIT.GT.CPS_TIME2) THEN
+              CPS_TIME1=CPS_TIME2
+              CPS_TIME2=CPS_TIME2+CPS_TIMINC
+              DO I=1,NP
+                PS1(I)=PS2(I)
+              END DO
+              PS2(:)=0.D0
+              READ(426,*) numPS
+              DO I=1,numPS
+                 READ(426,*) NODENUMPS, PSVAL
+                 PS2(NODENUMPS)=PSVAL
+              END DO
+            END IF
+          END DO
+
+          IF (NCPSOURCE .EQ. 2) THEN
+             CALL TotalAreaCalc() ! Set values for first timestep
+             DO I=1,NP
+               IF (TotalArea(I).EQ.0.d0) THEN
+                 DivByTotalArea(I)=0.d0
+               ELSE
+                 DivByTotalArea(I)=1.d0/TotalArea(I)
+               END IF
+               PSCurr(I) = RampPS*PS1(I)*3.d0*DivByTotalArea(I)
+             END DO
+          ELSE
+             DO I=1,NP
+                PSCurr(I) = RampPS*PS1(I)
+             END DO
+          END IF
+
+C     --------------------------------------------
+      CASE (-3, -4) !file starts at hotstart time
+C     --------------------------------------------
+C     Options -3,-4 and 3,4: locations in separate file; discharge
+C     For input purposes, 3 and 4 are the same
+C       This will very likely no longer be true once we fix the
+C       toNode floodplain issue for the NWM option (-4,4)
+
+          CALL TotalAreaCalc() ! Set values for first timestep
+          OPEN(430,FILE=TRIM(INPUTDIR)//'/'//'fort.430')
+          PS1(:) = 0.d0
+          DO I=1,numPS
+            READ(430,*) PSVAL
+            PS1(nearNode(I))=PS1(nearNode(I))+PSVAL
+            !cms - cannot simply overwrite since multiple features
+            !may end at the same ADCIRC node (junctions for NWM)
+          END DO
+          PS2(:) = 0.d0
+          DO I=1,numPS
+            READ(430,*) PSVAL
+            PS2(nearNode(I))=PS2(nearNode(I))+PSVAL
+          END DO
+          CPS_TIME1 = Timeloc
+          CPS_TIME2 = CPS_TIME1 + CPS_TIMINC
+          DO I=1,NP
+            IF (TotalArea(I).EQ.0.d0) THEN
+              DivByTotalArea(I)=0.d0
+            ELSE
+              DivByTotalArea(I)=1.d0/TotalArea(I)
+            END IF
+            PSCurr(I) = RampPS*PS1(I)*3.d0*DivByTotalArea(I)
+          END DO
+
+C     -------------------------------------------
+      CASE (3, 4)  !file starts at coldstart time
+C     -------------------------------------------
+
+          CALL TotalAreaCalc() ! Set values for first timestep
+          OPEN(430,FILE=TRIM(INPUTDIR)//'/'//'fort.430')
+          PS1(:) = 0.d0
+          DO I=1,numPS
+            READ(430,*) PSVAL
+            PS1(nearNode(I))=PS1(nearNode(I))+PSVAL
+            !cms - cannot simply overwrite since multiple features
+            !may end at the same ADCIRC node (junctions for NWM)
+          END DO
+          PS2(:) = 0.d0
+          DO I=1,numPS
+            READ(430,*) PSVAL
+            PS2(nearNode(I))=PS2(nearNode(I))+PSVAL
+          END DO
+
+          CPS_TIME1 = STATIM*86400.d0
+          CPS_TIME2 = CPS_TIME1 + CPS_TIMINC
+          DO IT=1,ITHS
+            TIMEIT=IT*DTDP + STATIM*86400.D0
+            IF (TIMEIT.GT.CPS_TIME2) THEN
+              CPS_TIME1=CPS_TIME2
+              CPS_TIME2=CPS_TIME2+CPS_TIMINC
+              DO I=1,NP
+                PS1(I)=PS2(I)
+              END DO
+              PS2(:)=0.D0
+              DO I=1,numPS
+                 READ(430,*) PSVAL
+                 PS2(nearNode(I))=PS2(nearNode(I))+PSVAL
+              END DO
+            END IF
+          END DO
+          DO I=1,NP
+            IF (TotalArea(I).EQ.0.d0) THEN
+              DivByTotalArea(I)=0.d0
+            ELSE
+              DivByTotalArea(I)=1.d0/TotalArea(I)
+            END IF
+            PSCurr(I) = RampPS*PS1(I)*3.d0*DivByTotalArea(I)
+          END DO
+
+      END SELECT
+C
+C--------------------END POINT SOURCE FORCING-------------------------
+C
 C
 C----------------------MET FORCING------------------------------------
 
@@ -1590,12 +1870,29 @@ C....IN THE FILE.  OTHERWISE ZERO OUT NSCOUE.
 C...
       IF(NTCYSE.LT.ITHS.AND.NOUTE.GT.0) NTCYSE = ITHS + NSPOOLE - 1 
       WRITE(16,1040) IESTP,NSCOUE
+C.... CMS V55. Added support for rainfall stations
+C...
+      IF(NTCYSE.LT.ITHS.AND.NOUTE.GT.0) NTCYSE = ITHS + NSPOOLE - 1
+      IF(NCRAIN.EQ.0) THEN
+         WRITE(16,1040) IESTP,NSCOUE
+      ELSE
+         IRAINSTP = IESTP  !set to same place as elevation file
+         WRITE(16,2040) IESTP,IRAINSTP,NSCOUE
+      ENDIF
+
  1040 FORMAT(//,1X,I6,' LINES OR RECORDS WRITTEN IN ELEVATION ',
      &                'STATION FILE BY THE TIME OF THE HOT START',
      &           /,8X,'SPOOL COUNTER = ',I6)
+ 2040 FORMAT(//,1X,I6,' LINES OR RECORDS WRITTEN IN ELEVATION ',
+     &                'STATION FILE BY THE TIME OF THE HOT START',
+     &        /,1X,I6,' LINES OR RECORDS WRITTEN IN PRECIPITATION ',
+     &                'STATION FILE BY THE TIME OF THE HOT START',
+     &           /,8X,'SPOOL COUNTER = ',I6)
+
 
       IF(NOUTE.LT.0) THEN
         IESTP=0
+        IRAINSTP=0  !v55. cms added precipitation station
         NSCOUE=0
         IF((NTCYSE.LT.ITHS).AND.(NSPOOLE.GT.0)) THEN
           NTCYSE=NTCYSE+((REAL(ITHS)-REAL(NTCYSE))/
@@ -1609,33 +1906,51 @@ C...
       IF(NOUTE.EQ.-2) THEN
         OPEN(61,FILE=TRIM(LOCALDIR)//'/'//'fort.61',
      &                      ACCESS='DIRECT',RECL=NBYTE)
+C       v55. cms added precipitation station
+        IF(NCRAIN.NE.0) THEN
+           OPEN(94,FILE=TRIM(LOCALDIR)//'/'//'fort.94',
+     &                      ACCESS='DIRECT',RECL=NBYTE)
+        ENDIF
         IF(NBYTE.EQ.4) THEN
           DO I=1,8
             WRITE(61,REC=IESTP+I) RDES4(I)
+            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) RDES4(I)
           ENDDO
           IESTP=IESTP+8
+          IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+8
           DO I=1,6
             WRITE(61,REC=IESTP+I) RID4(I)
+            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) RID4(I)
           ENDDO
           IESTP=IESTP+6
+          IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+6
           DO I=1,6
             WRITE(61,REC=IESTP+I) AID4(I)
+            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) AID4(I)
           ENDDO
           IESTP=IESTP+6
+          IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+6
         ENDIF
         IF(NBYTE.EQ.8) THEN
           DO I=1,4
             WRITE(61,REC=IESTP+I) RDES8(I)
+            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) RDES8(I)
           ENDDO
           IESTP=IESTP+4
+          IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+4
           DO I=1,3
             WRITE(61,REC=IESTP+I) RID8(I)
+            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) RID8(I)
+
           ENDDO
           IESTP=IESTP+3
+          IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+3
           DO I=1,3
             WRITE(61,REC=IESTP+I) AID8(I)
+            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) AID8(I)
           ENDDO
           IESTP=IESTP+3
+          IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+3
         ENDIF
         WRITE(61,REC=IESTP+1) NTRSPE
         WRITE(61,REC=IESTP+2) NSTAE
@@ -1644,16 +1959,35 @@ C...
         WRITE(61,REC=IESTP+5) 1
         IESTP=IESTP+5
         CLOSE(61)                    ! DO THIS TO FLUSH THE WRITE BUFFER
+        IF(NCRAIN.NE.0) THEN
+           WRITE(94,REC=IRAINSTP+1) NTRSPE
+           WRITE(94,REC=IRAINSTP+2) NSTAE
+           WRITE(94,REC=IRAINSTP+3) DT*NSPOOLE
+           WRITE(94,REC=IRAINSTP+4) NSPOOLE
+           WRITE(94,REC=IRAINSTP+5) 1
+           IRAINSTP=IRAINSTP+5
+           CLOSE(94)                    ! DO THIS TO FLUSH THE WRITE BUFFER
+        ENDIF
       ENDIF
       IF(NOUTE.EQ.-1) THEN
          if (write_local_files.eqv..false.) then
             CALL OPEN_GBL_FILE(61, TRIM(GLOBALDIR)//'/'//'fort.61',
      $        NSTAE_G, NSTAE, HEADER61)
+            IF(NCRAIN.NE.0) THEN
+               CALL OPEN_GBL_FILE(94, TRIM(GLOBALDIR)//'/'//'fort.94',
+     $            NSTAE_G, NSTAE, HEADER61)
+            ENDIF
+
          else
             CALL OPEN_GBL_FILE(61, TRIM(LOCALDIR)//'/'//'fort.61',
      $        NSTAE_G, NSTAE, HEADER61)
-         endif
-        IESTP=2
+            IF(NCRAIN.NE.0) THEN
+               CALL OPEN_GBL_FILE(94, TRIM(LOCALDIR)//'/'//'fort.94',
+     $           NSTAE_G, NSTAE, HEADER61)
+            ENDIF
+         ENDIF
+         IESTP=2
+         IRAINSTP=2        
       ENDIF
 
       IF(NOUTE.EQ.2) THEN
@@ -1661,6 +1995,12 @@ C...
      &                      ACCESS='DIRECT',RECL=NBYTE)
 c       WRITE(61,REC=ITEMPSTP+1) NTRSPE   ! ALLOW ADDITIONAL OUTPUT DATA TO BE WRITTEN
         CLOSE(61)                         ! DO THIS TO FLUSH THE WRITE BUFFER
+C       v55. cms added precipitation station support
+        IF(NCRAIN.NE.0) THEN
+           OPEN(94,FILE=TRIM(LOCALDIR)//'/'//'fort.94',
+     &                      ACCESS='DIRECT',RECL=NBYTE)
+           CLOSE(94)
+        ENDIF
       ENDIF
 
 C...
@@ -2791,9 +3131,88 @@ c          WRITE(76,REC=ITEMPSTP+1) NDSETSE  ! ALLOW ADDITIONAL OUTPUT DATA TO B
            CLOSE(76)                         ! DO THIS TO FLUSH THE WRITE BUFFER
         ENDIF
 
+C... kmd v55 ADDITIONS FOR PRECIPITATION FORCING
+C... THIS FILE IS CONTROLED BY THE ELEVATION OUTPUT OPTIONS
+C....GO TO THE PROPER PLACE IN THE GLOBAL PRECIP OUTPUT FILE
+C...
+        IF (NCRAIN.NE.0) WRITE(16,1058) IGRP,NSCOUGR
+ 1058   FORMAT(//,1X,I8,'Lines or records written in the global'
+     &         'rainfall file by the time of the hot start',
+     &         /,8X,'Spool counter =',I8)
 
-      ! jgf52.08.08: Create files for nodecode and noff output 
-      ! (wet/dry state of nodes and wet/dry state of elements)      
+        IF((NCRAIN.NE.0).AND.(NOUTGE.LT.0)) THEN
+           IGRP = 0
+           NSCOUGR = 0
+           IF ((NTCYSGR.LT.ITHS).AND.(NSPOOLGE.GT.0)) THEN
+             NTCYSGR=NTCYSGR+((REAL(ITHS)-REAL(NTCYSGR))/
+     &            REAL(NSPOOLGE))*REAL(NSPOOLGE)
+             IF (NTCYSGR.LT.ITHS) NTCYSGR=NTCYSGR+NSPOOLGE
+             IF (DTDP.NE.DTDPHS) THEN
+               NDSETSR=((NTCYFGR*DTDP)-(NTCYSGR*DTDPHS))/
+     &             (NSPOOLGE*DTDP)
+             ELSE
+               NDSETSR=(NTCYFGR-NTCYSGR)/NSPOOLGE
+             END IF
+          END IF
+          WRITE(16,1059)
+ 1059     FORMAT(//,'A New Rainfall file will be started')
+        END IF
+
+        IF ((NCRAIN.NE.0).AND.(NOUTGE.EQ.-2)) THEN
+          OPEN(94,FILE=TRIM(LOCALDIR)//'/'//'fort.94',
+     &        ACCESS='DIRECT',RECL=NBYTE)
+          IF(NBYTE.EQ.4) THEN
+             DO I=1,8
+               WRITE(94,REC=IGRP+I) RDES4(I)
+             END DO
+             IGRP=IGRP+8
+             DO I=1,6
+               WRITE(94,REC=IGRP+I) RID4(I)
+             END DO
+             IGRP=IGRP+6
+             DO I=1,6
+               WRITE(94,REC=IGRP+I) AID4(I)
+             END DO
+             IGRP=IGRP+6
+           END IF
+           IF (NBYTE.EQ.8) THEN
+             DO I=1,4
+               WRITE(94,REC=IGRP+I) RDES8(I)
+             END DO
+             IGRP=IGRP+4
+             DO I=1,3
+               WRITE(94,REC=IGRP+I) RID8(I)
+             END DO
+             IGRP=IGRP+3
+             DO I=1,3
+               WRITE(94,REC=IGRP+I) AID8(I)
+             END DO
+             IGRP=IGRP+3
+           END IF
+           WRITE(94,REC=IGRP+1) NDSETSE
+           WRITE(94,REC=IGRP+1) NP
+           WRITE(94,REC=IGRP+1) DT*NSPOOLGE
+           WRITE(94,REC=IGRP+1) NSPOOLGE
+           WRITE(94,REC=IGRP+1) 1
+           IGRP=IGRP+5
+           CLOSE(94)
+        END IF
+
+        IF ((NCRAIN.NE.0).AND.
+     &     ((NOUTGE.EQ.-1).OR.(NOUTGE.EQ.-4))) THEN
+            CALL OPEN_GBL_FILE(94,TRIM(GLOBALDIR)//'/'//'fort.94',
+     $          NP_G, NP, HEADER63)
+            IGRP=2
+         END IF
+         IF ((NCRAIN.NE.0).AND.(NOUTGE.EQ.2)) THEN
+           OPEN(94,FILE=TRIM(LOCALDIR)//'/'//'fort.94',
+     &        ACCESS='DIRECT',RECL=NBYTE)
+           CLOSE(94)
+         END IF
+C--------------END RAINFALL INFORMATION-------------------------
+
+      ! jgf52.08.08: Create files for nodecode and noff output
+      ! (wet/dry state of nodes and wet/dry state of elements)
       IF (ABS(NOUTGE).NE.0) then
          if (outputNodeCode.eqv..true.) then
             if (write_local_files.eqv..true.) then

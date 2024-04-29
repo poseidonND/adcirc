@@ -572,6 +572,21 @@ C.... tcm v52.30.01 additions for Smagorinski Eddy Viscosity Namelist
       LOGICAL :: FOUND_Smag_NML = .false. ! flag to determine if the Smag_Control namelist was present
       NAMELIST /Smag_Control/ SMAG_UPPER_LIM,SMAG_LOWER_LIM,SMAG_COMP_FLAG
 
+C..v55 - kmd - additions for rainfall namelist control
+      INTEGER :: NCRAIN, DYNRAIN !MTC
+      INTEGER :: IOS_RAIN
+      REAL(8) :: CRAIN_TIMINC
+      LOGICAL :: FOUND_raincon_NML = .FALSE.
+      NAMELIST /rainfallcontrol/ NCRAIN, CRAIN_TIMINC, DYNRAIN !MTC
+
+C..v55 - kmd - additions for point source namelist control
+      INTEGER :: NCPSOURCE
+      INTEGER :: IOS_PS
+      REAL(8) :: CPS_TIMINC
+      REAL(8) :: CPS_RAMP
+      LOGICAL :: FOUND_pscon_NML = .FALSE.
+      NAMELIST /psourcecontrol/ NCPSOURCE, CPS_TIMINC, CPS_RAMP
+
 #ifdef ADCNETCDF
       NETCDF_AVAIL = .true.
 #else
@@ -782,7 +797,23 @@ C.....REWIND THE FORT.15 FILE IN ORDER TO PROCESS THE REMAINING PIECES
       ENDIF
       REWIND(15)
 
+C..v55 - kmd - additions for rainfall
+      READ(UNIT=15,NML=rainfallcontrol,IOSTAT=IOS_RAIN)
+      IF (IOS_RAIN.LT.0) THEN
+         WRITE(*,*) "INFO: The rainfallcontrol namelist was not found."
+      ELSE
+         found_raincon_nml = .true.
+      END IF
+      REWIND(15)
 
+C..v55 - kmd - additions for point source
+      READ(UNIT=15,NML=psourcecontrol,IOSTAT=IOS_PS)
+      IF (IOS_PS.LT.0) THEN
+         WRITE(*,*) "INFO: The psourcecontrol namelist was not found."
+      ELSE
+         found_pscon_nml = .true.
+      END IF
+      REWIND(15)
 C
 C
 C  Initialize all runtime option logicals to false

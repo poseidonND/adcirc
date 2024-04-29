@@ -104,6 +104,10 @@ C   fort.68    Global Hot Start file
 C   fort.150   METIS input information
 C   fort.151   METIS output information
 C   fort.141   Global Time-Variant Bathymetry
+C   fort.426   Global node/source for point source
+C   fort.428   Global lon/lat location for point source
+C   fort.429   Global NWM feature information for point source
+C   fort.430   Global discharges for point source
 C
 C  When a parallel ADCIRC job is run, each PExxxx takes its input from its
 C  subdirectory PExxxx and writes local output files to the same directory.
@@ -886,6 +890,20 @@ C
          ENDIF
       ENDIF
 
+C... kmd 55 add information for point source information
+C    Files dependent on ncpsource (fort.426/428/429/430)
+C
+C-- If required to write a Point Source file for each PE
+C
+      IF (PREP_ALL) THEN
+         IF ((ABS(NCPSOURCE).EQ.1).OR.(ABS(NCPSOURCE).EQ.2)) THEN
+            CALL PREP426()  ! need to find local adcirc nodes
+         ELSE IF (ABS(NCPSOURCE).EQ.3) THEN
+            CALL PREPPSLOC() ! Set up for lon/lat point source
+         ELSE IF (ABS(NCPSOURCE).EQ.4) THEN
+            CALL PREPPSNWM() ! Set up NWM feature information
+         END IF
+      END IF 
 
 C  kmd48.33bc add information for 3D baroclinic simulations
       IF (PREP_ALL) THEN

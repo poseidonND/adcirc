@@ -2365,6 +2365,16 @@ C....    DMW
      &       TideFacUpdateInt," /"
          endif
 
+C.. v55 - kmd - additions for rainfall
+         IF (FOUND_rainCon_NML) THEN
+            write(15,rainfallcontrol)
+         END IF
+
+C.. v55 - kmd - additions for point source
+         IF (FOUND_psCon_NML) THEN
+            write(15,psourcecontrol)
+         END IF
+
 c...     tcm v52.30.01 additions for Smag_Control Namelist
          IF (FOUND_SMAG_NML) then  !If there was a namelist in the original fort.15 put it in the decomp 15's
             write(15,*) '! -- Begin Smagorinski Inputs --'
@@ -4485,6 +4495,482 @@ C
 c----------------------------------------------------------------------------
       END SUBROUTINE PREP39
 c----------------------------------------------------------------------------
+
+C ---------------------------------------------------------------------------
+C   kmd 53 - prep subroutine for point source information
+
+      SUBROUTINE PREP426()
+      USE PRE_GLOBAL
+      use memory_usage
+C
+C---------------------------------------------------------------------------C
+C                                                                           C
+C  This routine writes a Local "Point Source Information"
+C  C
+C  (fort.426) file for each subdomain using the domain decomposition of
+C  C
+C  the ADCIRC grid created by the routine DECOMP.
+C  C
+C                                                                           C
+C                   Added by Kendra Dresback (May 14, 2020)
+C                   C
+C---------------------------------------------------------------------------C
+C
+      IMPLICIT NONE
+      INTEGER(8) :: nbytes = 0
+      INTEGER I,J,IPROC,IPROC2
+      INTEGER SDU(NPROC) ! subdomain unit numbers
+      INTEGER SDNode
+      INTEGER INDX, NodeNum
+      LOGICAL Success    ! .true. if files opened without errors
+      INTEGER NUMNODE_PS
+      INTEGER, ALLOCATABLE :: NODENUMPS(:)
+      INTEGER, ALLOCATABLE :: NUMNODE_PS_PROC(:)
+      REAL(8),ALLOCATABLE :: PSVAL(:)
+      !CHARACTER*40  CPSTIMINC,RESBCBINP,GRIDINC
+      !CHARACTER*40,ALLOCATABLE :: RESBCBIN(:)
+
+C
+C--Enter, Locate, Open, and Read the ADCIRC UNIT 35
+C  Global Level of No Motion Boundary Conditions file for baroclinic
+C
+C     Open full domain and subdomain fort.35 files
+C      Print *, "Made it to prepping the files"
+      CALL OpenPrepFiles(426, 'point source information  ',
+     &     1, nproc, SDU, Success)
+C      Print *, "Made it out of prepping the files"
+      IF (.not.Success) THEN
+         WRITE(*,*) 'WARNING: Unit 426 file not preprocessed.'
+         RETURN ! note early return
+      ENDIF
+C
+C--Allocate local arrays
+C
+      ALLOCATE ( NODENUMPS(NNODG), PSVAL(NNODG))
+      ALLOCATE ( NUMNODE_PS_PROC(NPROC))
+      nbytes = 8*mnp
+      call memory_alloc(nbytes)
+
+C
+C--- Go through initial and determine nodes with different PROC
+C
+      DO  ! loop until end of file
+       DO IPROC=1,NPROC !loop to reset to zero counter
+         NUMNODE_PS_PROC(IPROC)=0
+       END DO
+       READ(426,*,END=9999) NUMNODE_PS
+        DO I=1, NUMNODE_PS
+         READ(426,*,END=9999) NODENUMPS(I), PSVAL(I)
+         INDX = NODENUMPS(I)      ! get full domain flow node number
+         DO J=1, ITOTPROC(INDX)    ! loop subdomains for 1 f.d. node
+            IPROC2 = IMAP_NOD_GL2(2*(J-1)+1,INDX) ! find next subdomain
+            DO IPROC=1, NPROC
+               IF (IPROC.EQ.IPROC2) THEN ! global node maps to this s.d.
+                  NUMNODE_PS_PROC(IPROC)=NUMNODE_PS_PROC(IPROC)+1
+               END IF
+            END DO
+         END DO
+        ENDDO
+        DO IPROC=1,NPROC
+           WRITE(SDU(IPROC),*) NUMNODE_PS_PROC(IPROC)
+        END DO
+        DO I=1, NUMNODE_PS
+         INDX = NODENUMPS(I)      ! get full domain flow node number
+         DO J=1, ITOTPROC(INDX)    ! loop subdomains for 1 f.d. node
+            IPROC2 = IMAP_NOD_GL2(2*(J-1)+1,INDX) ! find next subdomain
+            DO IPROC=1, NPROC
+               IF (IPROC.EQ.IPROC2) THEN ! global node maps to this s.d.
+                  SDNode = IMAP_NOD_GL2(2*(j-1)+2,INDX)
+                  WRITE(SDU(IPROC),*) SDNode, PSVAL(I)
+               END IF
+            END DO
+         END DO
+        ENDDO
+      END DO
+C
+ 9999 CLOSE (426)
+      DO IPROC=1, NPROC
+         CLOSE (SDU(IPROC))
+      ENDDO
+
+      IF (allocated(NODENUMPS)) then
+        DEALLOCATE (NODENUMPS)
+        DEALLOCATE (PSVAL)
+        nbytes = 4*exist_flux
+        call memory_dealloc(nbytes)
+      ENDIF
+      call memory_status()
+      return
+c----------------------------------------------------------------------------
+      END SUBROUTINE PREP426
+
+C ---------------------------------------------------------------------------
+C   kmd 53 - prep subroutine for point source information
+
+      SUBROUTINE PREPPSLOC()
+      USE PRE_GLOBAL
+      USE MESH, ONLY : CYLINDERMAP
+      use memory_usage
+C
+C---------------------------------------------------------------------------C
+C                                                                           C
+C  This routine writes a Local "Point Source Information"
+C  C
+C  (fort.428) file for each subdomain using the domain decomposition of
+C  C
+C  the ADCIRC grid created by the routine DECOMP.
+C  C
+C                                                                           C
+C                   Added by Kendra Dresback (July 27, 2020)
+C                   C
+C---------------------------------------------------------------------------C
+C
+      IMPLICIT NONE
+      INTEGER(8) :: nbytes = 0
+      INTEGER I,J,IPROC,IPROC2
+      INTEGER SDU(NPROC) ! subdomain unit numbers
+      INTEGER K, KK
+      INTEGER INDX
+      INTEGER NSTAPS_MAX
+      LOGICAL Success    ! .true. if files opened without errors
+      INTEGER, ALLOCATABLE :: NSTAPSP(:)
+      REAL(8), ALLOCATABLE :: QVAL(:)
+      !INTEGER, ALLOCATABLE :: IMAP_STAPS_LG(:)
+      !INTEGER, ALLOCATABLE :: STAPS_SHARE(:)
+      CHARACTER LOCSTATFN*20, PE*6
+      INTEGER ios_stations
+      !CHARACTER*40  CPSTIMINC,RESBCBINP,GRIDINC
+      !CHARACTER*40,ALLOCATABLE :: RESBCBIN(:)
+
+C
+C--Enter, Locate, Open, and Read the ADCIRC UNIT 428
+C  This file contains the point source locations
+C
+C     Open full domain and subdomain fort.428 files
+      CALL OpenPrepFiles(428, 'point source locations  ',
+     &     1, nproc, SDU, Success)
+      IF (.not.Success) THEN
+         WRITE(*,*) 'WARNING: Unit 428 file not preprocessed.'
+         RETURN ! note early return
+      ENDIF
+C
+C--- Read in the information first and determine the correct
+C--- processor.
+C
+
+      !First read in number of point sources
+      READ(428,*) NumPS
+
+      !Need to allocate the arrays
+      ALLOCATE ( XPS(NumPS),YPS(NumPS), SLPS(NumPS), SFPS(NumPS) )
+      ALLOCATE ( NNSPS(NumPS) )
+      ALLOCATE ( NSTAPSP(NPROC) )
+      ALLOCATE ( IMAP_STAPS_LG(NumPS,MNPROC) )
+      ALLOCATE ( STAPS_SHARE(NumPS) )
+      STAPS_SHARE(:) = -1
+      ALLOCATE ( QVAL(NumPS) )
+
+      !Now check memory
+      nbytes = 6*NumPS
+      call memory_alloc(nbytes)
+
+      ! Now read in the information from file
+      DO I=1,NumPS
+         READ(428,*) SLPS(I), SFPS(I)
+         SLPS(I)=DEG2RAD*SLPS(I)
+         SFPS(I)=DEG2RAD*SFPS(I)
+         !CALL CPP(XPS(I),YPS(I),SLPS(I),SFPS(I),SL0,SF0)
+         CALL CYLINDERMAP(XPS(I),YPS(I),SLPS(I),SFPS(I),SL0,SF0,ICS)
+      END DO
+      CLOSE(428)
+
+      ! Now need to determine which element the station
+      ! is in.
+      CALL kdtsearch(XPS,YPS,NNSPS,NumPS,
+     &        'Point Source stations    ')
+
+C
+C--- Go through initial and determine nodes with different PROC
+C
+      print *, " "
+      print *, "Point Source Locations (element index)"
+      print *, "DOMAIN      NumPS     Global     Local"
+      write(*,93) "Global",NumPS
+      DO IPROC=1,NPROC
+        ! Write out to log while processing
+        PE(1:6) = 'PE0000'
+        CALL IWRITE(PE,3,6,IPROC-1)
+
+        NSTAPSP(IPROC) = 0
+        DO K = 1,NumPS
+           DO J=1,NELP(IPROC)
+              INDX = abs(IMAP_EL_LG(J,IPROC))
+              IF (INDX.EQ.NNSPS(K)) THEN
+                 NSTAPSP(IPROC) = NSTAPSP(IPROC) + 1
+                 KK = K
+                 if (STAPS_SHARE(K) > -1) KK = -K
+                 IMAP_STAPS_LG(NSTAPSP(IPROC),IPROC) = KK
+                 STAPS_SHARE(K) = IPROC
+                 WRITE(*,94) PE, K, NNSPS(K), J
+                 ! tcm v51.20.03 once found exit the element loop
+                 exit
+              ENDIF
+           ENDDO
+        ENDDO
+        NSTAPS_MAX = MAX(NSTAPSP(IPROC),NSTAPS_MAX)
+      END DO
+      print *, " "
+ 93   FORMAT(1X,A6,5X,I8)
+ 94   FORMAT(1X,A6,3(3X,I8))
+
+C
+      !Now write out the number of point sources in each processor
+      DO IPROC=1,NPROC
+         WRITE(SDU(IPROC),*) NSTAPSP(IPROC)
+      END DO
+
+C
+C     Now write out the information about point sources
+      DO IPROC=1,NPROC
+         DO K=1,NSTAPSP(IPROC)
+            INDX = abs(IMAP_STAPS_LG(K,IPROC))
+            WRITE(SDU(IPROC),*) SLPS(INDX)*RAD2DEG, SFPS(INDX)*RAD2DEG
+         ENDDO
+      END DO
+
+      !Close all the open files in the different processors for fort.428
+      DO IPROC=1, NPROC
+         CLOSE (SDU(IPROC))
+      ENDDO
+
+
+      !Now prep the Q file for this method (fort.430)
+C     Open full domain and subdomain fort.430 files
+      CALL OpenPrepFiles(430, 'point source locations  ',
+     &     1, nproc, SDU, Success)
+      IF (.not.Success) THEN
+         WRITE(*,*) 'WARNING: Unit 430 file not preprocessed.'
+         RETURN ! note early return
+      ENDIF
+
+      ! Read in the values first
+      DO
+        DO I=1,NumPS
+          READ(430,*,END=9999) QVAL(I)
+        END DO
+
+      ! Now see about writing the values to the processors
+        DO IPROC=1,NPROC
+          DO K=1,NSTAPSP(IPROC)
+             INDX = abs(IMAP_STAPS_LG(K,IPROC))
+             WRITE(SDU(IPROC),*) QVAL(INDX)
+          ENDDO
+        END DO
+      END DO
+
+      !Close all the open files in the different processors for fort.428
+ 9999 CLOSE(430)
+      DO IPROC=1, NPROC
+         CLOSE (SDU(IPROC))
+      ENDDO
+
+
+      IF (allocated(SLPS)) then
+        DEALLOCATE (XPS,YPS,SLPS,SFPS)
+        DEALLOCATE (QVAL,NNSPS)
+        nbytes = 6*numps
+        call memory_dealloc(nbytes)
+      ENDIF
+      call memory_status()
+      return
+c----------------------------------------------------------------------------
+      END SUBROUTINE PREPPSLOC
+
+C ---------------------------------------------------------------------------
+C   kmd 53 - prep subroutine for point source information
+
+      SUBROUTINE PREPPSNWM()
+      USE PRE_GLOBAL
+      USE MESH, ONLY : CYLINDERMAP
+      use memory_usage
+C
+C---------------------------------------------------------------------------C
+C                                                                           C
+C  This routine writes a Local "Point Source Information"
+C  C
+C  (fort.428) file for each subdomain using the domain decomposition of
+C  C
+C  the ADCIRC grid created by the routine DECOMP.
+C  C
+C                                                                           C
+C                   Added by Kendra Dresback (July 27, 2020)
+C                   C
+C---------------------------------------------------------------------------C
+C
+      IMPLICIT NONE
+      INTEGER(8) :: nbytes = 0
+      INTEGER I,J,IPROC,IPROC2
+      INTEGER SDU(NPROC) ! subdomain unit numbers
+      INTEGER K, KK
+      INTEGER INDX
+      INTEGER NSTAPS_MAX
+      LOGICAL Success    ! .true. if files opened without errors
+      INTEGER, ALLOCATABLE :: NSTAPSP(:)
+      REAL(8), ALLOCATABLE :: QVAL(:)
+      !INTEGER, ALLOCATABLE :: IMAP_STAPS_LG(:)
+      !INTEGER, ALLOCATABLE :: STAPS_SHARE(:)
+      CHARACTER LOCSTATFN*20
+      INTEGER ios_stations
+      !CHARACTER*40  CPSTIMINC,RESBCBINP,GRIDINC
+      !CHARACTER*40,ALLOCATABLE :: RESBCBIN(:)
+
+C
+C--Enter, Locate, Open, and Read the ADCIRC UNIT 428
+C  This file contains the point source locations
+C
+C     Open full domain and subdomain fort.428 files
+      CALL OpenPrepFiles(429, 'point source locations  ',
+     &     1, nproc, SDU, Success)
+      IF (.not.Success) THEN
+         WRITE(*,*) 'WARNING: Unit 429 file not preprocessed.'
+         RETURN ! note early return
+      ENDIF
+C
+C--Allocate local arrays
+C
+!      ALLOCATE ( NSTAPSP(NPROC) )
+!      ALLOCATE ( IMAP_STAPS_LG(NumPS,MNPROC) )
+!      ALLOCATE ( STAPS_SHARE(NumPS) )
+!      STAPS_SHARE(:) = -1
+
+C
+C--- Read in the information first and determine the correct
+C--- processor.
+C
+
+      !First read in number of point sources
+      READ(429,*) NumPS
+
+      !Need to allocate the arrays
+      ALLOCATE ( XPS(NumPS),YPS(NumPS), SLPS(NumPS), SFPS(NumPS) )
+      ALLOCATE ( NNSPS(NumPS) )
+      ALLOCATE ( FeatureID(NumPS) )
+      ALLOCATE ( TNLON(NumPS), TNLAT(NumPS) )
+      ALLOCATE ( NSTAPSP(NPROC) )
+      ALLOCATE ( IMAP_STAPS_LG(NumPS,MNPROC) )
+      ALLOCATE ( STAPS_SHARE(NumPS) )
+      STAPS_SHARE(:) = -1
+      ALLOCATE ( QVAL(NumPS) )
+
+      !Now check memory
+      nbytes = 7*NumPS
+      call memory_alloc(nbytes)
+
+      ! Now read in the information from file
+      DO I=1,NumPS
+         READ(429,*) FeatureID(I), SLPS(I), SFPS(I),
+     &                TNLON(I), TNLAT(I)
+         SLPS(I)=DEG2RAD*SLPS(I)
+         SFPS(I)=DEG2RAD*SFPS(I)
+         !CALL CPP(XPS(I),YPS(I),SLPS(I),SFPS(I),SL0,SF0)
+         CALL CYLINDERMAP(XPS(I),YPS(I),SLPS(I),SFPS(I),SL0,SF0,ICS)
+      END DO
+      CLOSE(429)
+
+      ! Now need to determine which element the station
+      ! is in.
+      CALL kdtsearch(XPS,YPS,NNSPS,NumPS,
+     &        'Point Source stations    ')
+
+C
+C--- Go through initial and determine nodes with different PROC
+C
+      DO IPROC=1,NPROC
+        NSTAPSP(IPROC) = 0
+        DO K = 1,NumPS
+           DO J=1,NELP(IPROC)
+              INDX = abs(IMAP_EL_LG(J,IPROC))
+              IF (INDX.EQ.NNSPS(K)) THEN
+                 NSTAPSP(IPROC) = NSTAPSP(IPROC) + 1
+                 KK = K
+                 if (STAPS_SHARE(K) > -1) KK = -K
+                 IMAP_STAPS_LG(NSTAPSP(IPROC),IPROC) = KK
+                 STAPS_SHARE(K) = IPROC
+                 ! tcm v51.20.03 once found exit the element loop
+                 exit
+              ENDIF
+           ENDDO
+        ENDDO
+        NSTAPS_MAX = MAX(NSTAPSP(IPROC),NSTAPS_MAX)
+      END DO
+
+      !DO IPROC=1,NPROC
+      !  PRINT *, "NSTAPSP = ", NSTAPSP(IPROC)
+      !END DO
+C
+      !Now write out the number of point sources in each processor
+      DO IPROC=1,NPROC
+         WRITE(SDU(IPROC),*) NSTAPSP(IPROC)
+      END DO
+
+C
+      !Now write out the information about point sources
+      DO IPROC=1,NPROC
+        DO K=1,NSTAPSP(IPROC)
+           INDX = abs(IMAP_STAPS_LG(K,IPROC))
+           WRITE(SDU(IPROC),4750) FeatureID(INDX), SLPS(INDX)*RAD2DEG,
+     &          SFPS(INDX)*RAD2DEG, TNLON(INDX), TNLAT(INDX)
+        ENDDO
+      END DO
+
+      !Close all the open files in the different processors for fort.428
+      DO IPROC=1, NPROC
+         CLOSE (SDU(IPROC))
+      ENDDO
+
+      !Now prep the Q file for this method (fort.430)
+C     Open full domain and subdomain fort.430 files
+      CALL OpenPrepFiles(430, 'point source locations  ',
+     &     1, nproc, SDU, Success)
+      IF (.not.Success) THEN
+         WRITE(*,*) 'WARNING: Unit 430 file not preprocessed.'
+         RETURN ! note early return
+      ENDIF
+
+      ! Read in the values first
+      DO
+        DO I=1,NumPS
+          READ(430,*,END=9999) QVAL(I)
+        END DO
+
+      ! Now see about writing the values to the processors
+        DO IPROC=1,NPROC
+          DO K=1,NSTAPSP(IPROC)
+             INDX = abs(IMAP_STAPS_LG(K,IPROC))
+             WRITE(SDU(IPROC),*) QVAL(INDX)
+          ENDDO
+        END DO
+      END DO
+
+      !Close all the open files in the different processors for fort.428
+ 9999 CLOSE(430)
+      DO IPROC=1, NPROC
+         CLOSE (SDU(IPROC))
+      ENDDO
+
+ 4750 FORMAT(1X,I8,2X,4(F11.6,1X))
+
+
+      IF (allocated(SLPS)) then
+        DEALLOCATE (XPS,YPS,SLPS,SFPS,FeatureID)
+        DEALLOCATE (QVAL,NNSPS)
+        nbytes = 7*numps
+        call memory_dealloc(nbytes)
+      ENDIF
+      call memory_status()
+      return
+c----------------------------------------------------------------------------
+      END SUBROUTINE PREPPSNWM
 
 
 C   kmd48.33bc add information for initial condition file
@@ -7696,7 +8182,7 @@ C---------------------------------------------------------------------------
      &    X3DV, Y3DV, SL3DV, SF3DV, X3DT, Y3DT, SL3DT, SF3DT, C3D,
      &    foundCorrectionControlNamelist, NCICE, !GML added NCICE 20210727
      &    foundVEW1DChannelControlNamelist, meshHasWeir, meshHasInternalWeir,
-     &    meshHasWeirWithPipes
+     &    meshHasWeirWithPipes, NCRAIN
       USE NODALATTRIBUTES, ONLY : outputTau0
       USE NETCDFIO, ONLY : setADCIRCParameters, initNetCDFOutputFile,
      &    initNetCDFHotstart3D, initNetCDFHotstart,
@@ -7739,6 +8225,11 @@ C++ GML 20200605
       type(OutputDataDescript_t), SAVE :: IceStaDescript     ! fort.91
       type(OutputDataDescript_t), SAVE :: IceAFDescript      ! fort.93
 C++
+      type(OutputDataDescript_t), SAVE :: RainStaDescript    ! fort.901,  
+      type(OutputDataDescript_t), SAVE :: RainDescript       ! fort.903, DW
+
+
+
       type(OutputDataDescript_t), SAVE :: weirElevDescript   ! fort.77
       type(OutputDataDescript_t), SAVE :: EtaMaxDescript     ! maxele.63
       type(OutputDataDescript_t), SAVE :: UMaxDescript       ! maxvel.63
@@ -8165,6 +8656,45 @@ C     fort.93
       call makeFileName(IceAFDescript)
 C++
 C
+
+C     DW June 2023
+      ! station file, 'Applied rainfall'
+      RainStaDescript % specifier            = MERGE(NOUTE,0,NCRAIN > 0)
+      RainStaDescript % lun                  = 901
+      RainStaDescript % initial_value        = 0.0
+      RainStaDescript % num_items_per_record = 1
+      RainStaDescript % num_fd_records       = abs(NSTAE)
+      RainStaDescript % num_records_this     = abs(NSTAE)
+      RainStaDescript % ConsiderWetDry       = .FALSE.
+      RainStaDescript % alternate_value      = 0.0
+      RainStaDescript % field_name           = 'Applied_rainfall'
+      IF (ICS.eq.2) THEN
+         RainStaDescript % x_coord           => SLEM
+         RainStaDescript % y_coord           => SFEM
+      ELSE
+         RainStaDescript % x_coord           => XEM
+         RainStaDescript % y_coord           => YEM
+      ENDIF
+      RainStaDescript % file_extension       = 901
+      RainStaDescript % file_basename        = 'fort'
+      RainStaDescript % readMaxMin           = .false.
+      call makeFileName(RainStaDescript)
+
+      ! full domain file, rainfall rate
+      RainDescript % lun                  = 903
+      RainDescript % specifier            = MERGE(NOUTGE,0,NCRAIN>0) 
+      RainDescript % initial_value        = 0.0
+      RainDescript % num_items_per_record   = 1
+      RainDescript % num_fd_records      = MNP
+      RainDescript % num_records_this     = MNP 
+      RainDescript % ConsiderWetDry      = .FALSE. 
+      RainDescript % alternate_value     = 0.0
+      RainDescript % field_name           = 'railfallrate'
+      RainDescript % file_extension     = 903
+      RainDescript % file_basename      = 'fort'
+      RainDescript % readMaxMin         = .false.
+      call makeFileName(RainDescript)
+   
 C     minpr.63
       PrMinDescript % specifier            = abs(NOUTGW)
       PrMinDescript % lun                  = 313
@@ -8955,6 +9485,8 @@ C ++ GML 20200605
       CALL initNetCDFOutputFile(IceStaDescript, reterr)
       CALL initNetCDFOutputFile(IceAFDescript, reterr)
 C++
+      CALL initNetCDFOutputFile(RainStaDescript, reterr ) ! DW
+      CALL initNetCDFOutputFile(RainDescript, reterr) ! DW
       CALL initNetCDFOutputFile(WeirElevDescript, reterr)
       CALL initNetCDFOutputFile(EtaMaxDescript, reterr)
       CALL initNetCDFOutputFile(UMaxDescript, reterr)
