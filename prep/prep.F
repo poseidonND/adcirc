@@ -3012,9 +3012,22 @@ C---------------------------------------------------------------------------
       INTEGER J     ! counter for subdomains that corrsp. to a single f.d. node
       INTEGER IPROC2! PE of a subdomain that matches a single full domain node
       INTEGER PROC_NO ! proc number is 20 unless specified 
-
+      INTEGER, PARAMETER :: maxOpenFiles = 256
+      INTEGER startProc
+      INTEGER endProc
+      INTEGER deltaProc
+C
       proc_no = 20;
       FLUX_NUM = EXIST_FLUX
+C     Perform decomposition over range of subdomains.
+      
+      startProc = 1
+      DO WHILE ( startProc .le. nproc )
+         deltaProc = nproc - startProc
+         IF ( deltaProc .gt. maxOpenFiles ) deltaProc = maxOpenFiles
+         endProc = startProc + deltaProc
+
+
 C     Open full domain and subdomain fort.20 files
       if (sponge) then
          proc_no = 2001
@@ -3022,27 +3035,27 @@ C     Open full domain and subdomain fort.20 files
          write(*,*) 'FLUX_NUM = ',FLUX_NUM 
       endif  
 
-      CALL OpenPrepFiles(proc_no, 'aperiodic flux boundary       ',
-     &     1, nproc, SDU, Success)
-      IF (.not.Success) THEN
-         WRITE(*,*) 'WARNING: Unit 20 files not preprocessed.'
-         RETURN ! note early return
-      ENDIF
+        CALL OpenPrepFiles(proc_no, 'aperiodic flux boundary       ',
+     &     startProc, endProc, SDU, Success)
+        IF (.not.Success) THEN
+           WRITE(*,*) 'WARNING: Unit 20 files not preprocessed.'
+           RETURN ! note early return
+        ENDIF
 c
 c     Write Increment into all flux files
 c
-      READ(proc_no,*) FLUX_INC
-      DO IPROC=1,NPROC
-         WRITE(SDU(IPROC),*) FLUX_INC
-      ENDDO
+         READ(proc_no,*) FLUX_INC
+         DO IPROC=startProc, endProc
+             WRITE(SDU(IPROC),*) FLUX_INC
+         ENDDO
 C
 C     jgf45.12 Write each full domain nodal flux value into each of the
 C     subdomains that that full domain node maps to. The full domain
 C     node may map to more than one subdomain node if it falls on a
 C     boundary between subdomains (ghost nodes).
 C
-      DO WHILE(.TRUE.)
-         DO I = 1, FLUX_NUM             ! loop through full domain flow nodes
+         DO WHILE(.TRUE.)
+           DO I = 1, FLUX_NUM             ! loop through full domain flow nodes
 !            READ(20,*,END=40) FLUX_VAL ! get a flo val for this f.d. flow node
             READ(proc_no,'(A80)',END=40) FLUX_MSG ! get a flo val for this f.d. flow node
             if (sponge) then
@@ -3052,20 +3065,21 @@ C
             endif
             DO J=1, ITOTPROC(INDX)    ! loop over subdomains for 1 f.d. node
                IPROC2 = IMAP_NOD_GL2(2*(J-1)+1,INDX) ! find next subdomain
-               DO IPROC=1, NPROC
+               DO IPROC=startProc, endProc
                   IF (IPROC.EQ.IPROC2) THEN ! full domain node maps to this s.d.
                      !WRITE(SDU(IPROC),50) FLUX_VAL
                      WRITE(SDU(IPROC),*) TRIM(FLUX_MSG)
                   ENDIF
                END DO
+             END DO
             END DO
          END DO
-      ENDDO
- 40   CLOSE (proc_no)
-      DO IPROC=1, NPROC
-         CLOSE (SDU(IPROC))
-      ENDDO
-
+ 40     CLOSE (proc_no)
+         DO IPROC=startProc, endProc
+            CLOSE (SDU(IPROC))
+         ENDDO
+         startProc = endProc + 1
+      END DO  !
       IF (allocated(FLUX14_ARY)) then
         DEALLOCATE (FLUX14_ARY)
         nbytes = 4*exist_flux
@@ -4622,7 +4636,8 @@ C  the ADCIRC grid created by the routine DECOMP.
 C  C
 C                                                                           C
 C                   Added by Kendra Dresback (July 27, 2020)
-C                   C
+C     Modified by Aman Tejaswi (03 May 2024) -- handling files
+C     efficiently
 C---------------------------------------------------------------------------C
 C
       IMPLICIT NONE
@@ -4641,6 +4656,17 @@ C
       INTEGER ios_stations
       !CHARACTER*40  CPSTIMINC,RESBCBINP,GRIDINC
       !CHARACTER*40,ALLOCATABLE :: RESBCBIN(:)
+      INTEGER, PARAMETER :: maxOpenFiles = 256
+      INTEGER startProc
+      INTEGER endProc
+      INTEGER deltaProc
+C
+C     Perform decomposition over range of subdomains.
+      startProc = 1
+      DO WHILE ( startProc .le. nproc )
+         deltaProc = nproc - startProc
+         IF ( deltaProc .gt. maxOpenFiles ) deltaProc = maxOpenFiles
+         endProc = startProc + deltaProc
 
 C
 C--Enter, Locate, Open, and Read the ADCIRC UNIT 428
@@ -4648,7 +4674,7 @@ C  This file contains the point source locations
 C
 C     Open full domain and subdomain fort.428 files
       CALL OpenPrepFiles(428, 'point source locations  ',
-     &     1, nproc, SDU, Success)
+     &     startProc, endProc, SDU, Success)
       IF (.not.Success) THEN
          WRITE(*,*) 'WARNING: Unit 428 file not preprocessed.'
          RETURN ! note early return
@@ -4696,7 +4722,7 @@ C
       print *, "Point Source Locations (element index)"
       print *, "DOMAIN      NumPS     Global     Local"
       write(*,93) "Global",NumPS
-      DO IPROC=1,NPROC
+      DO IPROC=StartProc,endProc
         ! Write out to log while processing
         PE(1:6) = 'PE0000'
         CALL IWRITE(PE,3,6,IPROC-1)
@@ -4723,15 +4749,16 @@ C
  93   FORMAT(1X,A6,5X,I8)
  94   FORMAT(1X,A6,3(3X,I8))
 
+
 C
       !Now write out the number of point sources in each processor
-      DO IPROC=1,NPROC
+      DO IPROC=startProc,endProc
          WRITE(SDU(IPROC),*) NSTAPSP(IPROC)
       END DO
 
 C
 C     Now write out the information about point sources
-      DO IPROC=1,NPROC
+      DO IPROC=startProc,endProc
          DO K=1,NSTAPSP(IPROC)
             INDX = abs(IMAP_STAPS_LG(K,IPROC))
             WRITE(SDU(IPROC),*) SLPS(INDX)*RAD2DEG, SFPS(INDX)*RAD2DEG
@@ -4739,7 +4766,7 @@ C     Now write out the information about point sources
       END DO
 
       !Close all the open files in the different processors for fort.428
-      DO IPROC=1, NPROC
+      DO IPROC=startProc,endProc
          CLOSE (SDU(IPROC))
       ENDDO
 
@@ -4747,7 +4774,7 @@ C     Now write out the information about point sources
       !Now prep the Q file for this method (fort.430)
 C     Open full domain and subdomain fort.430 files
       CALL OpenPrepFiles(430, 'point source locations  ',
-     &     1, nproc, SDU, Success)
+     &     startProc, endProc, SDU, Success)
       IF (.not.Success) THEN
          WRITE(*,*) 'WARNING: Unit 430 file not preprocessed.'
          RETURN ! note early return
@@ -4760,7 +4787,7 @@ C     Open full domain and subdomain fort.430 files
         END DO
 
       ! Now see about writing the values to the processors
-        DO IPROC=1,NPROC
+        DO IPROC=startProc,endProc
           DO K=1,NSTAPSP(IPROC)
              INDX = abs(IMAP_STAPS_LG(K,IPROC))
              WRITE(SDU(IPROC),*) QVAL(INDX)
@@ -4768,19 +4795,18 @@ C     Open full domain and subdomain fort.430 files
         END DO
       END DO
 
-      !Close all the open files in the different processors for fort.428
- 9999 CLOSE(430)
-      DO IPROC=1, NPROC
+      !Close all the open files in the different processors for fort.430
+ 9999  CLOSE(430)
+       DO IPROC=startProc, endProc
          CLOSE (SDU(IPROC))
-      ENDDO
-
-
-      IF (allocated(SLPS)) then
-        DEALLOCATE (XPS,YPS,SLPS,SFPS)
-        DEALLOCATE (QVAL,NNSPS)
-        nbytes = 6*numps
-        call memory_dealloc(nbytes)
-      ENDIF
+       ENDDO
+       
+       DEALLOCATE (XPS,YPS,SLPS,SFPS)
+       DEALLOCATE (QVAL,NNSPS,NSTAPSP,IMAP_STAPS_LG,STAPS_SHARE)
+       nbytes = 6*numps
+       call memory_dealloc(nbytes)
+      startProc = endProc + 1 
+      END DO
       call memory_status()
       return
 c----------------------------------------------------------------------------
