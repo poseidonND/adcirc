@@ -535,9 +535,9 @@ C++
          CASE(312)
             CALL initNodalDataFile(UMax, descript1, reterr)
          CASE(313)
-            CALL initNodalDataFile(PrMin, descript1, reterr)
-         CASE(314)
-            CALL initNodalDataFile(WVMax, descript1, reterr)
+            CALL initNodalDataFile(PrMin, descript1, reterr)        
+         CASE(314)               
+            CALL initNodalDataFile(WVMax, descript1, reterr)            
          CASE(315)
             CALL initNodalDataFile(RSMax, descript1, reterr)
 #if defined CSWAN || defined ADCSWAN

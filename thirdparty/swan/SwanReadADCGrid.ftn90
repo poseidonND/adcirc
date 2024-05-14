@@ -85,8 +85,17 @@ subroutine SwanReadADCGrid
     integer                 :: vm       ! boundary marker
     character(80)           :: line     ! auxiliary textline
     logical                 :: stpnow   ! indicate whether program must be terminated or not
+
+!AmanT/Dam 202405 for global mesh
+    real(8), dimension(:,:), allocatable :: xve, yve     ! longitude original input
+    real(8), dimension(3) :: LONVE, LATVE
+    logical                 :: crossflag
+!ADC   type(ipair),allocatable :: node_dict(:) ! node hashtable dictionary
+    character(lenfnm):: grdout 
+
+
 !Casey 231217: Carrying forward changes from earlier version.
-!ADC    type(ipair),allocatable :: node_dict(:) ! node hashtable dictionary
+
 !
 !   Structure
 !
@@ -101,7 +110,9 @@ subroutine SwanReadADCGrid
     ndsd   = 0
     iostat = 0
     grdfil = 'fort.14'
+    grdout = 'fort.14.swan'
 !PUN    grdfil = trim(INPUTDIR)//DIRCH2//trim(grdfil)
+!PUN    grdout = trim(INPUTDIR)//DIRCH2//trim(grdout)
     call for (ndsd, grdfil, 'OF', iostat)
     if (stpnow()) goto 900
     !
@@ -136,6 +147,11 @@ subroutine SwanReadADCGrid
 !ADC       read(ndsd, *, end=950, err=910) ii, xcugrd(j), ycugrd(j), DEPTH(j)
 !ADC       call add_ipair(node_dict,ii,j)
     enddo
+   ! print *, "nverts", nverts  !testing
+
+!PUN    open( unit = 141, file = grdout, action = "write" ) ;
+!PUN    write( 141, *) 'mesh' 
+!PUN    write( 141, *) ncells, nverts
     !
     if(.not.allocated(kvertc)) allocate (kvertc(3,ncells), stat = istat)
     if ( istat /= 0 ) then
@@ -212,6 +228,59 @@ subroutine SwanReadADCGrid
     ! close file fort.14
     !
     close(ndsd)
+!AmanT/Dam 202405 for global mesh
+!PUN        allocate(xve(3,ncells),yve(3,ncells))  
+!PUN          crossflag = .FALSE. 
+!PUN          do j = 1, ncells
+               !print *, "Inside test loop now" 
+!PUN           xve(1,j) = xcugrd(kvertc(1,j));
+!PUN           xve(2,j) = xcugrd(kvertc(2,j));
+!PUN           xve(3,j) = xcugrd(kvertc(3,j));
+             
+!PUN           lonve(1) = xcugrd(kvertc(1,j));
+!PUN           lonve(2) = xcugrd(kvertc(2,j));
+!PUN           lonve(3) = xcugrd(kvertc(3,j));
+
+!PUN           yve(1,j) = ycugrd(kvertc(1,j));
+!PUN           yve(2,j) = ycugrd(kvertc(2,j));
+!PUN           yve(3,j) = ycugrd(kvertc(3,j));
+           
+!PUN           latve(1) = ycugrd(kvertc(1,j));
+!PUN           latve(2) = ycugrd(kvertc(2,j));
+!PUN           latve(3) = ycugrd(kvertc(3,j));
+
+
+!PUN           call SwanReadGlobalADC(xve(:,j), yve(:,j), lonve, latve, crossflag )
+!PUN        enddo
+
+              if (crossflag.eq..false.) then 
+
+               do j = 1, ncells
+!PUN           xcugrd(kvertc(1,j)) = xve(1,j);
+!PUN           xcugrd(kvertc(2,j)) = xve(2,j);
+!PUN           xcugrd(kvertc(3,j)) = xve(3,j);
+
+
+!PUN           ycugrd(kvertc(1,j)) = yve(1,j);
+!PUN           ycugrd(kvertc(2,j)) = yve(2,j);
+!PUN           ycugrd(kvertc(3,j)) = yve(3,j);
+               enddo
+!!PUN           print *, "changing xcugrd, ycugrd";          
+              endif
+
+
+        do j = 1, nverts
+           write(141,*) j, xcugrd(j), ycugrd(j), depth(j)
+        enddo      
+        do j = 1, ncells
+           write(141,*) j, 3, kvertc(:,j) ;
+        end do
+        write(141,*) 0
+        write(141,*) 0
+        write(141,*) 0
+        write(141,*) 0
+        close(141) ;
+
 !Casey 231217: Carrying forward changes from earlier version.
 !ADC    call close_dict(node_dict)    
     !
@@ -224,6 +293,7 @@ subroutine SwanReadADCGrid
 !PUN          enddo
 !PUN       enddo
 !PUN       !
+
  900 return
     !
  910 call msgerr (4, 'error reading data from grid file fort.14' )
@@ -231,4 +301,134 @@ subroutine SwanReadADCGrid
  950 call msgerr (4, 'unexpected end of file in grid file fort.14' )
     goto 900
     !
+
+    CONTAINS
+
+!AmanT/Dam 202405 for global mesh
+subroutine SwanReadGlobalADC(XVE, YVE, LONVE, LATVE,CROSSFLAG)  
+
+        use ocpcomm2
+        use ocpcomm4
+        use m_genarr
+        use SwanGriddata
+!PUN    use SIZES       
+!PUN    use MESSENGER
+!ADC    use HASHTABLE
+
+   
+       IMPLICIT NONE
+
+      !c Dummy 
+      !c   XVE, YVE     -- output
+      !c   LONM, LATM -- input
+       REAL (8), DIMENSION(3), intent(out) :: XVE, YVE
+       REAL (8), DIMENSION(3), intent(in) :: LONVE, LATVE
+       LOGICAL, intent(out) :: CROSSFLAG       
+      !c Local 
+       INTEGER:: II, IDX, SPF
+       
+       REAL (8):: Jac1, Jac2
+       REAL (8), dimension(3):: LONM, LATM
+       REAL (8), dimension(3):: LONTMP
+       REAL (8), dimension(3):: DLX, DL
+       REAL (8):: DLED1, DLED2
+           
+!       CROSSFLAG = .FALSE.
+  
+       LATM(:) = LATVE(1:3) 
+      !c Adjust so that 0 <= lon <= 360 
+       LONM(:) = MODULO( LONVE(1:3), 360.0D0 ) ; 
+       LONTMP = LONM ; 
+
+       CALL CAL_JAC( Jac1, LONM, LATM )
+       CALL CAL_EDGELENGTH( DLED1, LONM, LATM ) ; 
+   
+       SPF = 0 ; 
+       if (  Jac1 < 0.0D0 .OR. &
+          (Jac1 > 0.0D0 .AND. DLED1 > 360.0D0 ) ) THEN
+         !c An element has a circular index. 
+         !c Put a wrapped node on the other side
+         CROSSFLAG = .TRUE. 
+         !c A wrapped node is on the left of 180
+         if ( COUNT( LONM > 180.0D0 ) == 1 ) THEN
+            IDX = sum( merge( (/ 1, 2, 3 /), &
+                (/ 0, 0, 0 /), LONM > 180.0D0 ) ) ;
+
+            LONM(IDX) = LONM(IDX) - 360.0D0 ; 
+         endif
+         
+         !c A wrapped node is on the right of 180
+         if ( COUNT( LONM < 180.0D0 ) == 1 ) THEN
+            IDX = sum( merge( (/ 1, 2, 3 /), & 
+                (/ 0, 0, 0 /), LONM < 180.0D0 ) ) ;
+            
+            LONM(IDX) = LONM(IDX) + 360.0D0 ; 
+         endif        
+
+         CALL CAL_JAC( Jac2, LONM, LATM )
+         CALL CAL_EDGELENGTH( DLED2, LONM, LATM ) ; 
+
+         SPF = 1 ;
+         if ( Jac2 < 0.0D0 .OR. &
+             (Jac1 > 0.0D0 .AND. DLED2 > DLED1) ) THEN
+            LONM = LONTMP ;  
+            SPF = 0 ; 
+         endif
+      endif
+
+      do II=1,3
+        XVE(II) = LONM(II)
+        YVE(II) = LATM(II)
+      enddo
+       
+      RETURN ;
+
+end subroutine SwanReadGlobalADC
+
+subroutine CAL_EDGELENGTH( DEDGE, LON, LAT ) 
+
+    use ocpcomm2
+    use ocpcomm4
+    use m_genarr
+    use SwanGriddata
+!PUN    use SIZES
+
+           IMPLICIT NONE
+
+           REAL (8):: DEDGE, LON(3), LAT(3)
+
+           !c local c!
+           REAL (8), dimension(3):: DLX, DLY
+
+           DLX = (/ LON(2) - LON(1), &
+               LON(3) - LON(2), LON(1) - LON(3) /) ; 
+           DLY = (/ LAT(2) - LAT(1), &
+               LAT(3) - LAT(2), LAT(1) - LAT(3) /) ; 
+           
+           DEDGE = SQRT( SUM(DLX*DLX + DLY*DLY) ) ; 
+
+           RETURN ;
+end subroutine CAL_EDGELENGTH
+
+subroutine CAL_JAC( Jac, LON, LAT )
+    use ocpcomm2
+    use ocpcomm4
+    use m_genarr
+    use SwanGriddata
+!PUN    use SIZES
+           IMPLICIT NONE
+
+           REAL (8):: Jac, LON(3), LAT(3)
+
+           REAL (8):: XR(2), XS(2)
+
+           XR = 0.5D0*(/ LON(2) - LON(1), LAT(2) - LAT(1) /) ; 
+           XS = 0.5D0*(/ LON(3) - LON(1), LAT(3) - LAT(1) /) ; 
+
+           Jac = (XR(1)*XS(2) - XR(2)*XS(1)) ; ! Find Jacobian
+
+           RETURN ;
+end subroutine CAL_JAC
+
+
 end subroutine SwanReadADCGrid
