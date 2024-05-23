@@ -84,7 +84,8 @@ C-----------------------------------------------------------------------
      &   StatPartWetFix, How2FixStatPartWet, cgwce_hdp, ifnl_hdp, 
      &   CAliDisp, IFSFM, usingDynamicWaterLevelCorrection,slim,windlim,
      &   directvelWD,useHF,Limit_WaveStressGrad, directvelWD,useHF, 
-     &   WarnVel
+     &   WarnVel, CONTROL_OPT, YYYY_NDFC, MM_NDFC, DAY_NDFC, HR_NDFC,
+     &   MI_NDFC, SS_NDFC, UPDATE_NDFC, TIDE_MJD
 
 #if defined CSWAN || defined ADCSWAN
      &   , SWAN_OutputHS, SWAN_OutputDIR,
@@ -92,7 +93,7 @@ C-----------------------------------------------------------------------
      &    SWAN_OutputTM02, SWAN_OutputTMM10
 #endif
 #ifdef DATETIME
-     &   ,basedatetime
+     &   ,basedatetime, basedatetime_tide
 #endif
      &   ,NUOPC4WAV, NUOPC4MET
       USE ADC_CONSTANTS, ONLY: G, Ad, Bd, Cs, Cs2,
@@ -170,6 +171,9 @@ Casey 180318: Added NWS=13
 #endif
 !JLW: add subgrid 
       USE subgrid, only: subgridFilename, level0, level1
+!AMAN: add CONTROL_TIDE
+      USE TIDE_MODEL, only: NODAL_ARG, DATE_MJD 
+
 
       IMPLICIT NONE
       INTEGER NIBP,IBN1,IK,NDISC,NBBN,NVEL2
@@ -182,6 +186,7 @@ Casey 180318: Added NWS=13
       INTEGER :: I, J, JKI, JJ, NP2, IDENsign
       integer :: yyyy,mon,dd,hh,minu
 C
+      integer :: tide_ios
       !jgf51.52.35: for log messages about IDEN
       character(len=100) :: densityRunType ! diagnostic or prognostic
       character(len=100) :: densityDimensions ! 2DDI or 3D
@@ -229,6 +234,9 @@ C.... DMW
       NAMELIST /subgridControl/ subgridFilename, level0, level1
 
       NAMELIST /WindGrib2NetCdf/ read_NWS14_NetCdf_using_core_0
+      
+      NAMELIST /CONTROL_TIDE/ CONTROL_OPT, YYYY_NDFC, MM_NDFC,
+     &   DAY_NDFC, HR_NDFC, MI_NDFC, SS_NDFC, UPDATE_NDFC
 
       CHARACTER(len=160) :: origLine     ! raw line of input from fort.15
       CHARACTER(len=200) :: modifiedLine ! converted to namelist
@@ -551,6 +559,32 @@ C.... DMW
       write(scratchMessage,'(a,l)') "inundationOutput=",inundationOutput
       call logMessage(ECHO,trim(scratchMessage))
       write(scratchMessage,'(a,e15.8)') "inunThresh=",inunThresh
+      call logMessage(ECHO,trim(scratchMessage))
+      rewind(15)
+
+
+!AMAN: ADDED CONTROL_TIDE NAMELIST FOR CONTROLING NODAL FAC EQ. ARG  
+!BY ADCIRC FROM THE TIDE_MODEL MODULE.
+
+      namelistSpecifier = 'CONTROL_TIDE'
+      tide_ios = 0
+      READ(UNIT = 15, NML = CONTROL_TIDE,IOSTAT= tide_ios)
+      call logNamelistReadStatus(namelistSpecifier, tide_ios)
+      write(scratchMessage,*) "CONTROL_OPT=",CONTROL_OPT
+      call logMessage(ECHO,trim(scratchMessage))
+      write(scratchMessage,*) "YYYY_NDFC=",YYYY_NDFC
+      call logMessage(ECHO,trim(scratchMessage))
+      write(scratchMessage,*) "MM_NDFC=",MM_NDFC
+      call logMessage(ECHO,trim(scratchMessage))
+      write(scratchMessage,*) "DAY_NDFC=",DAY_NDFC
+      call logMessage(ECHO,trim(scratchMessage))
+      write(scratchMessage,*) "HR_NDFC=",HR_NDFC
+      call logMessage(ECHO,trim(scratchMessage))
+      write(scratchMessage,*) "MI_NDFC=",MI_NDFC
+      call logMessage(ECHO,trim(scratchMessage))
+      write(scratchMessage,*) "SS_NDFC=",SS_NDFC
+      call logMessage(ECHO,trim(scratchMessage))
+      write(scratchMessage,*) "UPDATE_NDFC=",UPDATE_NDFC
       call logMessage(ECHO,trim(scratchMessage))
       rewind(15)
 
@@ -3378,7 +3412,7 @@ C...  allocate tidal potential arrays
       call alloc_main4a()
 C...  READ TIDAL POTENTIAL AMPLITUDE, FREQUENCIES, NODAL FACTORS,
 C...  EQUILIBRIUM ARGUMENTS AND ALPHANUMERIC LABEL
-C....
+C....     
       DO I=1,NTIF
          READ(15,'(A5)')  TIPOTAG(I)
          READ(15,*)  TPK(I),AMIGT(I),ETRF(I),FFT(I),FACET(I)
@@ -3388,7 +3422,23 @@ C....
             PERT(I)=2.D0*PI/AMIGT(I)
          ENDIF
       END DO
+      IF(CONTROL_OPT.EQ..TRUE..AND.UPDATE_NDFC.EQ.0) THEN
 
+        call DATE_MJD(YYYY_NDFC,MM_NDFC,DAY_NDFC,HR_NDFC,MI_NDFC,SS_NDFC,TIDE_MJD) 
+                                                    
+        TIDE_MJD = TIDE_MJD + UPDATE_NDFC
+       
+        call NODAL_ARG(TPK,AMIGT,ETRF,FFT,FACET,TIDE_MJD)
+       
+      ENDIF
+      DO I=1,NTIF
+         
+         IF(AMIGT(I).EQ.0.) THEN
+            PERT(I)=0.
+         ELSE
+            PERT(I)=2.D0*PI/AMIGT(I)
+         ENDIF
+      END DO
       CALL ALLOC_MAIN4b()
 
 C...
@@ -3467,7 +3517,7 @@ C...  SPECIFIED BOUNDARIES: INCLUDING NBFR, FREQUENCIES, NODAL FACTORS,
 C...  EQUILIBRIUM ARGUMENTS AND AN ELEVATION BOUNDARY CONDITION
 C...  ALPHANUMERIC DESCRIPTOR
 C...
-1893  READ(15,*) NBFR
+      READ(15,*) NBFR
       MNBFR = NBFR
       IF (NBFR.EQ.0) MNBFR = 1
       IF (MNOPE.GT.0) THEN

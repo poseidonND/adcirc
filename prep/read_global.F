@@ -563,7 +563,9 @@ C.... DMW
       namelist /subgridControl/ subgridFilename, level0, level1
       ! jgf52.08.02 : For inundation output files.
       namelist /inundationOutputControl/ inundationOutput, inunThresh
-
+!AMAN: added namelist for controling nodal factors 
+      namelist /CONTROL_TIDE/ CONTROL_OPT,YYYY_NDFC, MM_NDFC, DAY_NDFC,
+     &       HR_NDFC, MI_NDFC, SS_NDFC, UPDATE_NDFC
 C
 C.....tcm v52.30.01 added for Smag_Control
       INTEGER :: IOS_Smag = 0
@@ -735,6 +737,17 @@ Casey 180318: Added NWS=13
       else
          call logMessage(INFO,
      &         'The inundationOutput namelist was not found.')
+      endif
+      rewind(15)  !Return to the top of the fort.15 file
+!AMAN: added for controling nodal factors/tide
+      read(unit=15,nml=CONTROL_TIDE,iostat=ios)
+      if ( ios.ge.0) then
+         foundCONTROL_TIDE = .TRUE.
+         call logMessage(INFO,
+     &         'CONTROL_TIDE namelist was found.')
+      else
+         call logMessage(INFO,
+     &         'CONTROL_TIDE namelist was not found.')
       endif
       rewind(15)  !Return to the top of the fort.15 file
       !

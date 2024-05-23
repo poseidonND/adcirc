@@ -42,6 +42,8 @@ if(BUILD_PADCIRC)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/momentum.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/netcdfio.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/netcdf_error.F90
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/DateTime.f90
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/tide_model.f90
       ${CMAKE_CURRENT_SOURCE_DIR}/src/control.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/xdmfio.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/writer.F

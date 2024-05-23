@@ -64,7 +64,15 @@ C... v50.xx sm -- added for coupling with NOUPC Cap
 C... TCM v56 2024 --- added variable for using a limiter or cap
 C           on wave stress gradients
       LOGICAL   ::  Limit_WaveStressGrad = .FALSE. ! set in fort.15 file 
-      
+      LOGICAL   ::  CONTROL_OPT= .FALSE.  ! AMAN:: for tide_control
+      INTEGER   ::  YYYY_NDFC = 0
+      INTEGER   ::  MM_NDFC = 0
+      INTEGER   ::  DAY_NDFC = 0
+      INTEGER   ::  HR_NDFC = 0
+      INTEGER   ::  MI_NDFC = 0
+      INTEGER   ::  SS_NDFC = 0
+      INTEGER   ::  UPDATE_NDFC = 0            ! AMAN:: for tide_control     
+      REAL(8), SAVE   ::  TIDE_MJD               ! AMAN 
 
 C      real(8) rampriver,drampriver,rampriver1,rampriver2
 C     jgf46.08 Fine grained ramp functions (jgf46.21 split flux b.c.s)
@@ -643,6 +651,7 @@ C     kmd48.33bc - added variables for 3D boundary conditions
       CHARACTER(80) :: base_date
 #ifdef DATETIME
       type(datetime) :: basedatetime
+      type(datetime) :: basedatetime_tide !AMAN:: added for control_tide
 #endif
       CHARACTER(80) :: comments    ! miscellaneous information about the data
       CHARACTER(80) :: host

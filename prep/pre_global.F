@@ -316,6 +316,18 @@ Casey 180318: Added NWS=13
       logical :: level0 = .true. 
       logical :: level1 = .false.
 
+      !aman:: CONTROL_TIDE
+      logical :: foundCONTROL_TIDE = .false.
+      LOGICAL :: CONTROL_OPT
+      INTEGER :: YYYY_NDFC
+      INTEGER :: MM_NDFC
+      INTEGER :: DAY_NDFC
+      INTEGER :: HR_NDFC
+      INTEGER :: MI_NDFC
+      INTEGER :: SS_NDFC
+      INTEGER :: UPDATE_NDFC
+
+
       ! jgf52.08.02: For inundation output control. Wanted to just
       ! use the variables of the same name from the write_output module,
       ! but this must wait until build dependencies are resolved. 

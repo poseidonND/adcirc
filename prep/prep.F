@@ -2337,7 +2337,22 @@ Casey 180318: Added NWS=13
      &         " level1=",level1," /"
          endif
 
+!AMAN: adding CONTROL_TIDE namelist
+         if(foundCONTROL_TIDE) then
+            WRITE(15,*) '! -- Begin TIDE Control Namelist --'     
+            WRITE(15,*) "&CONTROL_TIDE"
+            WRITE(15,*)  " CONTROL_OPT=", CONTROL_OPT,","
+            WRITE(15,*)  " YYYY_NDFC=", YYYY_NDFC,","
+            WRITE(15,*)  " MM_NDFC=", MM_NDFC,","
+            WRITE(15,*)   " DAY_NDFC=", DAY_NDFC,","
+            WRITE(15,*)   " HR_NDFC=", HR_NDFC,","
+            WRITE(15,*)   " MI_NDFC=", MI_NDFC,","
+            WRITE(15,*)   " SS_NDFC=", SS_NDFC,","       
+            WRITE(15,*)   " UPDATE_NDFC=", UPDATE_NDFC 
+            WRITE(15,*)   " /"
+            WRITE(15,*) '! -- End TIDE Control Namelist --'
 
+         endif
          ! wet dry control
          if (foundWetDryControlNameList) then
             WRITE(15,'(a,l,a,l,a,l,a,l,a,i1,a,f15.4,a,l,a,l,a,l,a)')
