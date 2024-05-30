@@ -85,7 +85,8 @@ C-----------------------------------------------------------------------
      &   CAliDisp, IFSFM, usingDynamicWaterLevelCorrection,slim,windlim,
      &   directvelWD,useHF,Limit_WaveStressGrad, directvelWD,useHF, 
      &   WarnVel, CONTROL_OPT, YYYY_NDFC, MM_NDFC, DAY_NDFC, HR_NDFC,
-     &   MI_NDFC, SS_NDFC, UPDATE_NDFC, TIDE_MJD
+     &   MI_NDFC, SS_NDFC, UPDATE_NDFC, TIDE_MJD, TIDE_MJD_UPDATE,
+     &   CURR_TIM_ADC
 
 #if defined CSWAN || defined ADCSWAN
      &   , SWAN_OutputHS, SWAN_OutputDIR,
@@ -3412,7 +3413,8 @@ C...  allocate tidal potential arrays
       call alloc_main4a()
 C...  READ TIDAL POTENTIAL AMPLITUDE, FREQUENCIES, NODAL FACTORS,
 C...  EQUILIBRIUM ARGUMENTS AND ALPHANUMERIC LABEL
-C....     
+C.... 
+          
       DO I=1,NTIF
          READ(15,'(A5)')  TIPOTAG(I)
          READ(15,*)  TPK(I),AMIGT(I),ETRF(I),FFT(I),FACET(I)
@@ -3422,11 +3424,11 @@ C....
             PERT(I)=2.D0*PI/AMIGT(I)
          ENDIF
       END DO
-      IF(CONTROL_OPT.EQ..TRUE..AND.UPDATE_NDFC.EQ.0) THEN
+      IF(CONTROL_OPT.EQ..TRUE..AND.UPDATE_NDFC.GT.0) THEN
 
         call DATE_MJD(YYYY_NDFC,MM_NDFC,DAY_NDFC,HR_NDFC,MI_NDFC,SS_NDFC,TIDE_MJD) 
                                                     
-        TIDE_MJD = TIDE_MJD + UPDATE_NDFC
+        TIDE_MJD_UPDATE = TIDE_MJD + UPDATE_NDFC
        
         call NODAL_ARG(TPK,AMIGT,ETRF,FFT,FACET,TIDE_MJD)
        
@@ -3439,6 +3441,8 @@ C....
             PERT(I)=2.D0*PI/AMIGT(I)
          ENDIF
       END DO
+
+      
       CALL ALLOC_MAIN4b()
 
 C...

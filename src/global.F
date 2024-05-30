@@ -73,7 +73,8 @@ C           on wave stress gradients
       INTEGER   ::  SS_NDFC = 0
       INTEGER   ::  UPDATE_NDFC = 0            ! AMAN:: for tide_control     
       REAL(8), SAVE   ::  TIDE_MJD               ! AMAN 
-
+      REAL(8), SAVE   ::  TIDE_MJD_UPDATE
+      REAL(8), SAVE   ::  CURR_TIM_ADC
 C      real(8) rampriver,drampriver,rampriver1,rampriver2
 C     jgf46.08 Fine grained ramp functions (jgf46.21 split flux b.c.s)
       REAL(8) RampExtFlux,DRampExtFlux ! Ramp for external flux b.c.s

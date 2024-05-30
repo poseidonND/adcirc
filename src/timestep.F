@@ -82,8 +82,8 @@ C
      &    BCFLAG_LNM, usingDynamicWaterLevelCorrection,
      &    dynamicWaterLevelCorrection1, dynamicWaterLevelCorrection2, L_N, TKM, 
      &    WarnElevDump, nodes_lg, NT, NM, NB, DEBUG, NHOUTONCE,
-     &    Limit_WaveStressGrad,
-     &    earlyterminate, IT_foundNaN, WarnVel, Flag_VelError
+     &    Limit_WaveStressGrad, CURR_TIM_ADC, TIDE_MJD, TIDE_MJD_UPDATE,
+     &    earlyterminate, IT_foundNaN, WarnVel,Flag_VelError,UPDATE_NDFC
       USE ADC_CONSTANTS, ONLY: rhoWat0, sigT0, waveWindMultiplier,
      &                         WaveStressGrad_Cap 
      
@@ -149,7 +149,7 @@ Casey 100205: Add a variable for writing of SWAN hot-start files.
      &     adjust_sponge_sigma, getabslayerext, sponge_shift_soln
 
       USE subgrid, ONLY: level0, getVertLookup
-
+      USE TIDE_MODEL, only: NODAL_ARG, DATE_MJD  !AMAN--TMD UPDATE
       IMPLICIT NONE
       INTEGER, intent(in) :: IT
 C
@@ -169,7 +169,7 @@ c. RJW merged 08/26/2008 from Casey 071219:Added the following variables for 3D 
       INTEGER :: warnVelExceeded
       INTEGER :: warnElevExceeded
       logical, save ::  EtaDisc_Fill = .TRUE.
-
+      INTEGER :: count_update_nodal
       REAL(8) ArgT, ArgTP, ArgSAlt
       REAL(8) CCSFEA
       REAL(8) ElMax
@@ -253,7 +253,9 @@ C...
 C...  Computation of TimeLoc and TimeH are consolidated. SB,ZC,RL 2022-06-22
 C...
       TimeLoc=IT*DTDP + StaTim*86400.D0
-      TimeH=IT*DTDP + (StaTim - RefTim)*86400.D0
+      count_update_nodal = 0    !AMAN-- TMD Update 
+
+      TimeH=IT*DTDP + (StaTim - RefTim)*86400.D0 -(count_update_nodal*UPDATE_NDFC*86400.D0)
       IF (CHOTHS.eqv..true.) THEN
          IF ((ITHS+1).EQ.IT) THEN
            StaTimHS=((IT-1)*DTDPHS)/86400.D0
@@ -261,21 +263,22 @@ C...
          END IF
          TimeLoc=IT*DTDP + (StaTimHS - RefTimHS)*86400.D0
          TimeH=IT*DTDP + ((StaTimHS - StaTim) - RefTim)*86400.D0
+     &              -(count_update_nodal*UPDATE_NDFC*86400.D0)
       END IF
 
 C...  HARMONIC CALCULATIONS ARE MADE FOR TIME WHICH INCLUDES THE REFTIM
 C...  TO ALLOW FOR THE POSSIBILITY THAT THE EQUILIBRIUM ARGUMENTS MAY
 C...  BE FOR A TIME OTHER THAN THE MODEL STARTING TIME.
 C...
-      TimeH=IT*DTDP + (StaTim - RefTim)*86400.D0
+!      TimeH=IT*DTDP + (StaTim - RefTim)*86400.D0
 !kmd - added this for the cases where the timestep changes from hot start timestep
-      IF (CHOTHS.eqv..true.) THEN
-         IF ((ITHS+1).EQ.IT) THEN
-           StaTimHS=((IT-1)*DTDPHS)/86400.D0
-           StaTim=((IT-1)*DTDP)/86400.D0
-         END IF
-         TimeH=IT*DTDP + ((StaTimHS - StaTim) - RefTim)*86400.D0
-      END IF
+!      IF (CHOTHS.eqv..true.) THEN
+!         IF ((ITHS+1).EQ.IT) THEN
+!           StaTimHS=((IT-1)*DTDPHS)/86400.D0
+!           StaTim=((IT-1)*DTDP)/86400.D0
+!         END IF
+!         TimeH=IT*DTDP + ((StaTimHS - StaTim) - RefTim)*86400.D0
+!      END IF
 
 C-------------------TEMPORAL RAMP-------------------------------------
 C...  THIS SECTION IS REWRITTEN BY SB, ZC, and RL 2022-06-22
@@ -858,6 +861,16 @@ C...        incorporated into this calculation.
 C...
 C...  WJP 02.21.2018 Rewriting for general formula for all species,
 C     cleaner code, and correct identification of 0,1,2 or higher species
+      CURR_TIM_ADC = ((IT*DTDP)/86400.D0) + TIDE_MJD
+      IF(ABS(CURR_TIM_ADC-TIDE_MJD_UPDATE).LT.1d-9) THEN
+         call NODAL_ARG(TPK,AMIGT,ETRF,FFT,FACET,TIDE_MJD_UPDATE)
+         count_update_nodal = count_update_nodal + 1
+         IF(MYPROC.EQ.0) THEN
+                WRITE(ScreenUnit, *) "Updating nodal factors and eq"
+         ENDIF
+!AMAN--TMD UPDATE
+      ENDIF
+
       IF(CTIP) THEN
          TIPLOOP: DO J=1,NTIF
             IF (PERT(J).EQ.0.) THEN
@@ -890,7 +903,7 @@ C           species
             ENDDO
          ENDDO TIPLOOP
       ENDIF
-
+      TIDE_MJD_UPDATE = TIDE_MJD_UPDATE + count_update_nodal*(UPDATE_NDFC) 
 C...
 C...  Depth Averaged Baroclinic Forcing needed by GWCE and 2DDI Momentum
 C...  Compute this (divided by H, i.e., Bx/H, By/H) as a nodally averaged
