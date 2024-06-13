@@ -88,7 +88,7 @@ subroutine SwanReadADCGrid
 
 !AmanT/Dam 202405 for global mesh
     real(8), dimension(:,:), allocatable :: xve, yve     ! longitude original input
-    real(8), dimension(:), allocatable :: xver, yver  ! rotated lon lat
+    real(8), dimension(:), allocatable :: xver, yver, xver_tmp, yver_tmp  ! rotated lon lat
     real(8), dimension(3)   :: LONVE, LATVE
     logical                 :: crossflag
     REAL(8)                 :: PHIN, THETAN 
@@ -124,7 +124,7 @@ subroutine SwanReadADCGrid
     ndsd   = 0
     iostat = 0
     grdfil = 'fort.14'
-    grdout = 'fort.14.swan'
+    grdout = 'swan.14'
     fort_rotm = 'fort.rotm'
 
 !PUN    grdfil = trim(INPUTDIR)//DIRCH2//trim(grdfil)
@@ -248,6 +248,14 @@ subroutine SwanReadADCGrid
 
 
 !PUN      allocate(xver(nverts),yver(nverts))
+!PUN      allocate(xver_tmp(nverts),yver_tmp(nverts))
+
+
+!PUN         do k = 1,nverts
+!PUN                xver_tmp(k) = xcugrd(k)*DEG2RAD
+!PUN               yver_tmp(k) = ycugrd(k)*DEG2RAD
+!PUN         enddo            
+
 
 !PUN      PHIN = -42.8906
 !PUN      THETAN = 72.300
@@ -255,7 +263,7 @@ subroutine SwanReadADCGrid
 !Call for rotation matrix
 !PUN        call DRV_ROTMAT_ZNVEC( PHIN, THETAN ) 
 
-!PUN        call SPCOORSROTS1( ROTMAT, xver, yver, xcugrd, ycugrd, nverts) 
+!PUN        call SPCOORSROTS1( ROTMAT, xver, yver, xver_tmp, yver_tmp, nverts) 
 
 !PUN         do k = 1,nverts
 !PUN                xcugrd(k) = xver(k)*RAD2DEG
@@ -573,7 +581,7 @@ subroutine SPCOORSROTS1( RTOTS, LONR, LATR, LONO, LATO, NN )
         INTEGER :: NN
         REAL(8) :: RTOTS(3,3)
         REAL(8), dimension(:):: LONR, LATR
-        REAL, dimension(nn) ::  LONO, LATO
+        REAL(8), dimension(:) ::  LONO, LATO
 
         !c local c!
         INTEGER :: IP
