@@ -125,12 +125,14 @@ subroutine SwanReadADCGrid
     iostat = 0
     grdfil = 'fort.14'
     grdout = 'swan.14'
-    fort_rotm = 'fort.rotm'
+
 
 !PUN    grdfil = trim(INPUTDIR)//DIRCH2//trim(grdfil)
 !PUN    grdout = trim(INPUTDIR)//DIRCH2//trim(grdout)
-!PUN    fort_rotm = trim(INPUTDIR)//trim(fort_rotm)
+!PUN    fort_rotm = TRIM(GBLINPUTDIR)//'/'//'fort.rotm' 
     call for (ndsd, grdfil, 'OF', iostat)
+    open(newunit=rotmunit, file=fort_rotm, status="old", action="read")
+
     if (stpnow()) goto 900
     !
     ! skip first line
@@ -257,9 +259,12 @@ subroutine SwanReadADCGrid
 !PUN         enddo            
 
 
-!PUN      PHIN = -42.8906
-!PUN      THETAN = 72.300
-
+!Read fort.rotm file    (Aman/Dam 17Jun2024)
+!PUN      read(rotmunit,*) firstline_rotm
+!PUN      read(rotmunit,*) PHIN, THETAN 
+ !!       PHIN = 114.16991
+ !!      THETAN =  0.77432
+!PUN     close(rotmunit)
 !Call for rotation matrix
 !PUN        call DRV_ROTMAT_ZNVEC( PHIN, THETAN ) 
 
