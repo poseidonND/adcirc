@@ -59,6 +59,10 @@ C... v50.xx sm -- nws=17 for NUOPC coupling hwrf data
       real(8), allocatable :: wvny1(:) ! wind velocity in y-dir at each node at prev ts
       real(8), allocatable :: wvnx2(:) ! wind velocity in x-dir at each node at new ts
       real(8), allocatable :: wvny2(:) ! wind velocity in y-dir at each node at new ts
+!Aman/Dam Rotating wind velocities for global swan (17Jun2024)
+
+      real(8), allocatable :: wvnx2_tmp(:) !rotated tmp wind velocity in x-dir'
+      real(8), allocatable :: wvny2_tmp(:) !rotated tmp wind velocity in y-dir at each node at prev ts
       real(8), allocatable :: prn1(:) ! barometric presssure at each node at prev ts
       real(8), allocatable :: prn2(:) ! barometric pressure at each node at new ts
       real(8), allocatable :: w(:,:)  ! static weights for main nws13 grid
@@ -328,6 +332,8 @@ C     ----------------------------------------------------------------
 #endif
       allocate ( wvnx1(np),wvny1(np) )
       allocate ( wvnx2(np),wvny2(np) )
+
+      allocate ( wvnx2_tmp(np),wvny2_tmp(np)) 
       allocate ( prn1(np) )
       allocate ( prn2(np) )
 
@@ -348,7 +354,9 @@ C.... convert background pressure from millibars to meters of water
       wvny1 = 0.0
       wvnx2 = 0.0
       wvny2 = 0.0
-
+     
+      wvnx2_tmp = 0.0
+      wvny2_tmp = 0.0 
       CALL checkWindDragType()
       CALL mapWindDragFunctionPointer()
 
@@ -901,7 +909,8 @@ C----------------------------------------------------------------------
      &   wvnxout, wvnyout, timeloc)
       use owiwind,only : nws12get, findStormCenter    ! sb added 09/xx/2006     
       use global, only : ciceout, h0, eta2, ncice, rampmete,
-     &   sponge, res_bc_flag, IDEN, SigTS, cice1, cice2, IFSPROTS
+     &   sponge, res_bc_flag, IDEN, SigTS, cice1, cice2, IFSPROTS,
+     &   WVNX2_ROT, WVNY2_ROT
       USE ADC_CONSTANTS, only: g
       use nodalAttributes, only : applyDirectionalWindReduction,
      &   loadCanopyCoef, loadDirEffRLen, applyCanopyCoefficient
@@ -1791,6 +1800,14 @@ C      DW/WJP: rotate wind stresses if coordinate transform
      &              UVECTMP, VVECTMP, NP, FWD = .TRUE. )
        ENDIF
 
+!Aman/Dam Rotate Wind Velocities for Global SWAN
+        IF ( IFSPROTS .eq. 1 ) THEN
+          WVNX2_tmp(1:NP) = WVNX2(1:NP)
+          WVNY2_tmp(1:NP) = WVNY2(1:NP)
+          CALL DRVMAP2DSPVEC( WVNX2_ROT, WVNY2_ROT,
+     &              WVNX2_tmp, WVNY2_tmp, NP, FWD = .TRUE. )
+       ENDIF            
+
 C--------------------END MET FORCING---------------------------------------
 
 #if defined(WIND_TRACE) || defined(ALL_TRACE)
@@ -2135,7 +2152,7 @@ C----------------------------------------------------------------------
       USE ADC_CONSTANTS, only: g
       use global, only : ciceout, h0, eta2, ncice, rampmete,
      &   sponge, res_bc_flag, statim, dtdp, dtdphs, iths,
-     &   IDEN, SigTS, cice1, cice2, IFSPROTS
+     &   IDEN, SigTS, cice1, cice2, IFSPROTS, WVNX2_ROT, WVNY2_ROT
       use owiwind,only : nws12init, nws12get, findStormCenter    ! sb added 09/xx/2006
       use nodalAttributes, only : applyDirectionalWindReduction,
      &   loadCanopyCoef, loadDirEffRLen, applyCanopyCoefficient
@@ -3291,6 +3308,14 @@ C      DW/WJP: rotate wind stresses if coordinate transform
           CALL DRVMAP2DSPVEC( WSX2, WSY2,
      &              UVECTMP, VVECTMP, NP, FWD = .TRUE. ) ;
        ENDIF
+
+!Aman/Dam Rotate Wind Velocities for Global SWAN
+        IF ( IFSPROTS .eq. 1 ) THEN
+          WVNX2_tmp(1:NP) = WVNX2(1:NP)
+          WVNY2_tmp(1:NP) = WVNY2(1:NP)
+          CALL DRVMAP2DSPVEC( WVNX2_ROT, WVNY2_ROT,
+     &              WVNX2_tmp, WVNY2_tmp, NP, FWD = .TRUE. )
+       ENDIF 
       
 #if defined(WIND_TRACE) || defined(ALL_TRACE)
        call allMessage(DEBUG,"Return.")

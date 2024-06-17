@@ -4591,7 +4591,8 @@ C
         ALLOCATE( SLAMR(MNP), SFEAR(MNP) ) ;
         ALLOCATE( RVELF(2,2,MNP), RVELI(2,2,MNP) ) ; 
         ALLOCATE( UVECTMP(MNP), VVECTMP(MNP) ) ; 
-      
+        
+         
         SLAMR = 0.0D0 ; 
         SFEAR = 0.0D0 ;
         

@@ -26,7 +26,7 @@ C-----------------------------------------------------------------------
       USE WRITE_OUTPUT, ONLY : terminate
       USE GLOBAL, ONLY : DEBUG, ECHO, INFO, WARNING, ERROR,
      &          setMessageSource, unsetMessageSource, allMessage,
-     &          scratchMessage
+     &          scratchMessage, IFSPROTS
 #ifdef CSWAN
 
       USE SWCOMM1, ONLY: NMOVAR
@@ -983,7 +983,7 @@ C-----------------------------------------------------------------------
 
       !USE, INTRINSIC :: IEEE_ARITHMETIC !jgfdebug ieee_is_nan()
       USE GLOBAL,   ONLY: DT,
-     &                    ETA2,
+     &                    ETA2,WVNX2_ROT, WVNY2_ROT,
 Casey 120305: Merging ice changes from Taylor Asher.
 CTGA 110912:  Full SWAN ice implementation.  Use global variables
      &                    NCICE,
@@ -1040,13 +1040,21 @@ Casey 090302: Initialize the arrays.
       ENDDO
 
 Casey 090302: Need to pass correct first wind snaps to SWAN.
-      DO IN=1,NP
+      IF( IFSPROTS.eq.1 ) THEN   !USE ROTATED WIND VECS
+       DO IN=1,NP
+         SWAN_WX2(IN,1) = WVNX1(IN)
+         SWAN_WY2(IN,1) = WVNY1(IN)
+         SWAN_WX2(IN,2) = WVNX2_ROT(IN)
+         SWAN_WY2(IN,2) = WVNY2_ROT(IN)
+       ENDDO
+      ELSE
+       DO IN=1,NP
          SWAN_WX2(IN,1) = WVNX1(IN)
          SWAN_WY2(IN,1) = WVNY1(IN)
          SWAN_WX2(IN,2) = WVNX2(IN)
          SWAN_WY2(IN,2) = WVNY2(IN)
-      ENDDO
-
+       ENDDO
+      ENDIF  
 Casey 091216: Initialize arrays for friction coupling and compute first set of values.
       IF(COUPFRIC)THEN
          CALL Manning2Madsen

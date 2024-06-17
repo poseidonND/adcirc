@@ -257,7 +257,11 @@ c.
       REAL(8),ALLOCATABLE, TARGET ::  WVNOutMax(:) ! v46.50 sb 11/11/2006
       
       real(8), allocatable, target :: wvnxout(:) ! output wind velocity in x-dir at each node 
-      real(8), allocatable, target :: wvnyout(:) ! output wind velocity in y-dir at each node 
+      real(8), allocatable, target :: wvnyout(:) ! output wind velocity in y-dir at each node
+!ROTATED WIND VECTORS
+      REAL(8), ALLOCATABLE, DIMENSION(:):: WVNX1_ROT, WVNX2_ROT
+      REAL(8), ALLOCATABLE, DIMENSION(:):: WVNY1_ROT, WVNY2_ROT
+!ROTATED WIND VECTORS
      
       real(8),allocatable :: gwce_lv(:)
 
@@ -1572,6 +1576,12 @@ Casey 090302: Added the next line for output of radiation stress gradients.
       RSNMax(:) = 0.d0
       ALLOCATE (RSNMax_Time(MNP) ) !tcm v51.20.01
       RSNMax_Time(:) = 0.d0
+      
+!Aman Rotate wind velocities
+
+      ALLOCATE(WVNX2_ROT(MNP),WVNY2_ROT(MNP))
+      WVNX2_ROT(:) = 0.d0
+      WVNY2_ROT(:) = 0.d0
 
 C
       RETURN
