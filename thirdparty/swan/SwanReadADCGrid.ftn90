@@ -278,7 +278,7 @@ subroutine SwanReadADCGrid
 !PUN               ycugrd(k) = yver(k)*RAD2DEG
 !PUN         enddo
 
-
+          
 !AmanT/Dam 202405 for global mesh
 !PUN        allocate(xve(3,ncells),yve(3,ncells))  
 
@@ -307,11 +307,11 @@ subroutine SwanReadADCGrid
 !PUN        enddo
  
 !PUN         if (crossflag.eq..false.) then 
-
+!PUN          print *, "changing x and y"     
 !PUN          do j = 1, ncells
-!PUN           xcugrd(kvertc(1,j)) = modulo(xve(1,j),360.0d0);
-!PUN           xcugrd(kvertc(2,j)) = modulo(xve(2,j),360.0d0);
-!PUN           xcugrd(kvertc(3,j)) = modulo(xve(3,j),360.0d0);
+!PUN           xcugrd(kvertc(1,j)) = xve(1,j)
+!PUN           xcugrd(kvertc(2,j)) = xve(2,j)
+!PUN           xcugrd(kvertc(3,j)) = xve(3,j)
 
 
 !PUN           ycugrd(kvertc(1,j)) = yve(1,j);
@@ -320,8 +320,6 @@ subroutine SwanReadADCGrid
 !PUN               enddo      
 !PUN         endif
 
-  
-          
              do j = 1, nverts
                 write(141,*) j, xcugrd(j), ycugrd(j), depth(j)
              enddo      
@@ -333,6 +331,8 @@ subroutine SwanReadADCGrid
               write(141,*) 0
               write(141,*) 0
              close(141) ;
+          
+            
 
 !Casey 231217: Carrying forward changes from earlier version.
 !ADC    call close_dict(node_dict)    
