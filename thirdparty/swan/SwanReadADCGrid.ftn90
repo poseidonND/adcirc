@@ -94,7 +94,7 @@ subroutine SwanReadADCGrid
     REAL(8)                 :: PHIN, THETAN 
     integer                 :: rotmunit ! unit refer for fort.rotm
     character(lenfnm)       :: fort_rotm   ! name of fort file including path
-    character(80)           :: firstline_rotm  !alphaphet line (first line in fort.rotm)
+    character(80)           :: firstline_rotm, ignoremsg  !alphaphet line (first line in fort.rotm)
 
 
 
@@ -125,13 +125,16 @@ subroutine SwanReadADCGrid
     iostat = 0
     grdfil = 'fort.14'
     grdout = 'swan.14'
+    rotmunit= 99999
 
 
 !PUN    grdfil = trim(INPUTDIR)//DIRCH2//trim(grdfil)
 !PUN    grdout = trim(INPUTDIR)//DIRCH2//trim(grdout)
 !PUN    fort_rotm = TRIM(GBLINPUTDIR)//'/'//'fort.rotm' 
+
     call for (ndsd, grdfil, 'OF', iostat)
-    open(newunit=rotmunit, file=fort_rotm, status="old", action="read")
+
+!PUN    open(newunit=rotmunit, file=fort_rotm, status="old", action="read")
 
     if (stpnow()) goto 900
     !
@@ -261,11 +264,11 @@ subroutine SwanReadADCGrid
 
 !Read fort.rotm file    (Aman/Dam 17Jun2024)
 !PUN      read(rotmunit,*) firstline_rotm
-!PUN      read(rotmunit,*) PHIN, THETAN 
- !!       PHIN = 114.16991
- !!      THETAN =  0.77432
+!PUN      read(rotmunit,*) PHIN, THETAN, IGNOREMSG
+ 
 !PUN     close(rotmunit)
-!Call for rotation matrix
+
+        !Call for rotation matrix
 !PUN        call DRV_ROTMAT_ZNVEC( PHIN, THETAN ) 
 
 !PUN        call SPCOORSROTS1( ROTMAT, xver, yver, xver_tmp, yver_tmp, nverts) 
@@ -275,18 +278,7 @@ subroutine SwanReadADCGrid
 !PUN               ycugrd(k) = yver(k)*RAD2DEG
 !PUN         enddo
 
-           
-             do j = 1, nverts
-                write(141,*) j, xcugrd(j), ycugrd(j), depth(j)
-             enddo      
-             do j = 1, ncells
-                write(141,*) j, 3, kvertc(:,j) ;
-              end do
-              write(141,*) 0
-              write(141,*) 0
-              write(141,*) 0
-              write(141,*) 0
-             close(141) ;
+
 !AmanT/Dam 202405 for global mesh
 !PUN        allocate(xve(3,ncells),yve(3,ncells))  
 
@@ -313,34 +305,34 @@ subroutine SwanReadADCGrid
 !PUN           call SwanReadGlobalADC(xve(:,j), yve(:,j), lonve, latve, crossflag )
 
 !PUN        enddo
-
-              if (crossflag.eq..false.) then 
+ 
+!PUN         if (crossflag.eq..false.) then 
 
 !PUN          do j = 1, ncells
-!PUN           xcugrd(kvertc(1,j)) = xve(1,j);
-!PUN           xcugrd(kvertc(2,j)) = xve(2,j);
-!PUN           xcugrd(kvertc(3,j)) = xve(3,j);
+!PUN           xcugrd(kvertc(1,j)) = modulo(xve(1,j),360.0d0);
+!PUN           xcugrd(kvertc(2,j)) = modulo(xve(2,j),360.0d0);
+!PUN           xcugrd(kvertc(3,j)) = modulo(xve(3,j),360.0d0);
 
 
 !PUN           ycugrd(kvertc(1,j)) = yve(1,j);
 !PUN           ycugrd(kvertc(2,j)) = yve(2,j);
 !PUN           ycugrd(kvertc(3,j)) = yve(3,j);
 !PUN               enddo      
-              endif
+!PUN         endif
 
   
           
-!!             do j = 1, nverts
-!!                write(141,*) j, xcugrd(j), ycugrd(j), depth(j)
-!!             enddo      
-!!             do j = 1, ncells
-!!                write(141,*) j, 3, kvertc(:,j) ;
-!!              end do
-!!              write(141,*) 0
-!!              write(141,*) 0
-!!              write(141,*) 0
-!!              write(141,*) 0
-!!             close(141) ;
+             do j = 1, nverts
+                write(141,*) j, xcugrd(j), ycugrd(j), depth(j)
+             enddo      
+             do j = 1, ncells
+                write(141,*) j, 3, kvertc(:,j) ;
+              end do
+              write(141,*) 0
+              write(141,*) 0
+              write(141,*) 0
+              write(141,*) 0
+             close(141) ;
 
 !Casey 231217: Carrying forward changes from earlier version.
 !ADC    call close_dict(node_dict)    
@@ -396,7 +388,6 @@ subroutine SwanReadGlobalADC(XVE, YVE, LONVE, LATVE,CROSSFLAG)
        REAL (8), dimension(3):: DLX, DL
        REAL (8):: DLED1, DLED2
            
-!       CROSSFLAG = .FALSE.
   
        LATM(:) = LATVE(1:3) 
       !c Adjust so that 0 <= lon <= 360 
