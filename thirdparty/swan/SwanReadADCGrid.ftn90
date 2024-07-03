@@ -88,14 +88,16 @@ subroutine SwanReadADCGrid
 
 !AmanT/Dam 202405 for global mesh
     real(8), dimension(:,:), allocatable :: xve, yve     ! longitude original input
-    real(8), dimension(:), allocatable :: xver, yver, xver_tmp, yver_tmp  ! rotated lon lat
+    real(8), dimension(:), allocatable :: xver, yver, xver_tmp, yver_tmp, dxlon  ! rotated lon lat
     real(8), dimension(3)   :: LONVE, LATVE
     logical                 :: crossflag
-    REAL(8)                 :: PHIN, THETAN 
+    REAL(8)                 :: PHIN, THETAN
+    integer                 :: jjmax(1)
+    REAL(8)                 :: lono, dxlonmax 
     integer                 :: rotmunit ! unit refer for fort.rotm
     character(lenfnm)       :: fort_rotm   ! name of fort file including path
     character(80)           :: firstline_rotm, ignoremsg  !alphaphet line (first line in fort.rotm)
-
+    character(132) :: errmsg
 
 
     REAL(8):: ROTMAT(3,3) = reshape( (/ 1.0, 0.0, 0.0, &
@@ -105,7 +107,8 @@ subroutine SwanReadADCGrid
 !AmanT/Dam 202405 for global mesh
 
 !ADC   type(ipair),allocatable :: node_dict(:) ! node hashtable dictionary
-    character(lenfnm):: grdout 
+    character(lenfnm):: grdout
+!    character(lenfnm):: grdout1 
 
 
 !Casey 231217: Carrying forward changes from earlier version.
@@ -174,6 +177,7 @@ subroutine SwanReadADCGrid
 !PUN    open( unit = 141, file = grdout, action = "write" ) ;
 !PUN    write( 141, *) 'mesh' 
 !PUN    write( 141, *) ncells, nverts
+
     !
     if(.not.allocated(kvertc)) allocate (kvertc(3,ncells), stat = istat)
     if ( istat /= 0 ) then
@@ -254,37 +258,39 @@ subroutine SwanReadADCGrid
 
 !PUN      allocate(xver(nverts),yver(nverts))
 !PUN      allocate(xver_tmp(nverts),yver_tmp(nverts))
+!PUN      allocate(dxlon(nverts-1) ) ; dxlon = 0.D0 ;
 
-
-!PUN         do k = 1,nverts
-!PUN                xver_tmp(k) = xcugrd(k)*DEG2RAD
-!PUN               yver_tmp(k) = ycugrd(k)*DEG2RAD
-!PUN         enddo            
+!PUN      do k = 1,nverts
+!PUN        xver_tmp(k) = xcugrd(k)*DEG2RAD
+!PUN        yver_tmp(k) = ycugrd(k)*DEG2RAD
+!PUN      enddo            
 
 
 !Read fort.rotm file    (Aman/Dam 17Jun2024)
-!PUN      read(rotmunit,*) firstline_rotm
-!PUN      read(rotmunit,*) PHIN, THETAN, IGNOREMSG
- 
+!PUN     read(rotmunit,*) firstline_rotm
+!PUN     read(rotmunit,*) PHIN, THETAN, IGNOREMSG
 !PUN     close(rotmunit)
 
         !Call for rotation matrix
-!PUN        call DRV_ROTMAT_ZNVEC( PHIN, THETAN ) 
+!PUN     call DRV_ROTMAT_ZNVEC( PHIN, THETAN ) 
 
-!PUN        call SPCOORSROTS1( ROTMAT, xver, yver, xver_tmp, yver_tmp, nverts) 
+!PUN     call SPCOORSROTS1( ROTMAT, xver, yver, xver_tmp, yver_tmp, nverts) 
 
-!PUN         do k = 1,nverts
-!PUN                xcugrd(k) = xver(k)*RAD2DEG
-!PUN               ycugrd(k) = yver(k)*RAD2DEG
-!PUN         enddo
+!PUN     do k = 1,nverts
+!PUN       xcugrd(k) = xver(k)*RAD2DEG
+!PUN       ycugrd(k) = yver(k)*RAD2DEG
+!PUN     enddo
 
           
-!AmanT/Dam 202405 for global mesh
+         ! convert to -180 to 180
+!PUN        xcugrd = modulo( xcugrd, 360.D0 ) ;  
+!PUN        where ( xcugrd > 180.D0 ) xcugrd = xcugrd - 360.D0 ;
+          
+!AmanT/Dam 202405 for global mesh (does not break a limited-area model)
 !PUN        allocate(xve(3,ncells),yve(3,ncells))  
 
-
-!PUN          crossflag = .FALSE. 
-!PUN          do j = 1, ncells
+!PUN        crossflag = .FALSE. 
+!PUN        do j = 1, ncells
                !print *, "Inside test loop now" 
 !PUN           xve(1,j) = xcugrd(kvertc(1,j));
 !PUN           xve(2,j) = xcugrd(kvertc(2,j));
@@ -306,34 +312,64 @@ subroutine SwanReadADCGrid
 
 !PUN        enddo
  
+             ! Simple approach to remedy the 'periodicity' in the longitude !
+             ! when the prime meridian is crossed.                          !
+             ! + Limitation
+             !    1. Will not work as intended if there are any subdomains whose  
+             !       their longitudal coordinates cover the entire domain lengthwise 
+             !       (from  lon_{0} <= lon <= lon_{0} + 360, lon_{0} is a reference value 
+             !    
+             !    2. A few subdmains may be required to aviod having the aforementioend 
+             !       subdomains.    
 !PUN         if (crossflag.eq..false.) then 
-!PUN          print *, "changing x and y"     
-!PUN          do j = 1, ncells
-!PUN           xcugrd(kvertc(1,j)) = xve(1,j)
-!PUN           xcugrd(kvertc(2,j)) = xve(2,j)
-!PUN           xcugrd(kvertc(3,j)) = xve(3,j)
-
-
-!PUN           ycugrd(kvertc(1,j)) = yve(1,j);
-!PUN           ycugrd(kvertc(2,j)) = yve(2,j);
-!PUN           ycugrd(kvertc(3,j)) = yve(3,j);
-!PUN               enddo      
-!PUN         endif
+!PUN           ! print *, "changing x and y", MyProc     
+!PUN           do j = 1, ncells
+!PUN             xcugrd(kvertc(1,j)) = xve(1,j)
+!PUN             xcugrd(kvertc(2,j)) = xve(2,j)
+!PUN             xcugrd(kvertc(3,j)) = xve(3,j)
+!PUN
+!PUN             ycugrd(kvertc(1,j)) = yve(1,j);
+!PUN             ycugrd(kvertc(2,j)) = yve(2,j);
+!PUN             ycugrd(kvertc(3,j)) = yve(3,j);
+!PUN           enddo      
+!PUN         else
+!PUN            ! Subdomain crossing the meridian: 
+!PUN            !   - find lon_{0} and change the convention from the original convention 
+!PUN            !     (for from e.g. -180-180, 0-360 ) to lon \in [ lon_{0}, lon_{0} + 360 ] 
+!PUN            xcugrd = modulo( xcugrd, 360.D0 ) ;
+!PUN
+!PUN            xver = xcugrd ; 
+!PUN            CALL quicksort(xver, 1, nverts)
+!PUN           
+!PUN            DO j = 1, nverts - 1
+!PUN              dxlon(j) = xver(j+1) - xver(j) ;  
+!PUN            END DO 
+!PUN      
+!PUN            jjmax = maxloc( dxlon ) ; 
+!PUN            dxlonmax = dxlon(jjmax(1)) ;
+!PUN            
+!PUN            IF ( dxlonmax < 1.D0 ) THEN
+!PUN               WRITE( errmsg, '(A,I0.4,A)') 'Warning: a subdomain in PE', MyProc, &
+!PUN                    ' may be invalid subdomain (please check swan.14) and cause incorrect results.'    
+!PUN            END IF 
+!PUN            lono = ( xver(jjmax(1)+1) + xver(jjmax(1)) )/2.D0 ; 
+!PUN           
+!PUN            ! print*, myproc, "lono = ", lono, xver(jjmax(1)+1), xver(jjmax(1)) ;  
+!PUN            where( xcugrd < lono ) xcugrd = xcugrd + 360.D0 ; 
+!PUN        endif
 
              do j = 1, nverts
                 write(141,*) j, xcugrd(j), ycugrd(j), depth(j)
              enddo      
              do j = 1, ncells
                 write(141,*) j, 3, kvertc(:,j) ;
-              end do
-              write(141,*) 0
-              write(141,*) 0
-              write(141,*) 0
-              write(141,*) 0
+             end do
+             write(141,*) 0
+             write(141,*) 0
+             write(141,*) 0
+             write(141,*) 0
              close(141) ;
           
-            
-
 !Casey 231217: Carrying forward changes from earlier version.
 !ADC    call close_dict(node_dict)    
     !
@@ -354,8 +390,6 @@ subroutine SwanReadADCGrid
  950 call msgerr (4, 'unexpected end of file in grid file fort.14' )
     goto 900
     !
-
-
    
     CONTAINS
 
@@ -390,13 +424,13 @@ subroutine SwanReadGlobalADC(XVE, YVE, LONVE, LATVE,CROSSFLAG)
            
   
        LATM(:) = LATVE(1:3) 
-      !c Adjust so that 0 <= lon <= 360 
+       !c Adjust so that 0 <= lon <= 360 
        LONM(:) = MODULO( LONVE(1:3), 360.0D0 ) ; 
        LONTMP = LONM ; 
 
        CALL CAL_JAC( Jac1, LONM, LATM )
        CALL CAL_EDGELENGTH( DLED1, LONM, LATM ) ; 
-   
+  
        SPF = 0 ; 
        if (  Jac1 < 0.0D0 .OR. &
           (Jac1 > 0.0D0 .AND. DLED1 > 360.0D0 ) ) THEN
@@ -633,5 +667,39 @@ subroutine CHECK_RTOTMAT( RTOTS, IERR )
 
         RETURN ;
 end subroutine CHECK_RTOTMAT
+
+!
+! DW: taken from
+!    https://gist.github.com/t-nissie/479f0f16966925fa29ea
+!
+! Author: t-nissie
+! License: GPLv3
+!    https://gist.github.com/t-nissie/479f0f16966925fa29ea
+recursive subroutine quicksort(a, first, last)
+  implicit none
+  real(8)::  a(:), x, t
+  integer:: first, last
+
+  integer:: i, j
+
+  x = a( (first+last) / 2 )
+  i = first
+  j = last
+  do
+     do while (a(i) < x)
+        i=i+1
+     end do
+     do while (x < a(j))
+        j=j-1
+     end do
+     if (i >= j) exit
+     t = a(i);  a(i) = a(j);  a(j) = t
+     i=i+1
+     j=j-1
+  end do
+  if (first < i-1) call quicksort(a, first, i-1)
+  if (j+1 < last)  call quicksort(a, j+1, last)
+
+end subroutine quicksort
 
 end subroutine SwanReadADCGrid
