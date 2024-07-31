@@ -886,6 +886,20 @@ C
          ENDIF
       ENDIF
 
+C... kmd 55 add information for point source information
+C    Files dependent on ncpsource (fort.426/428/429/430)
+C
+C-- If required to write a Point Source file for each PE
+C
+      IF (PREP_ALL) THEN
+         IF ((ABS(NCPSOURCE).EQ.1).OR.(ABS(NCPSOURCE).EQ.2)) THEN
+            CALL PREP426()  ! need to find local adcirc nodes
+         ELSE IF (ABS(NCPSOURCE).EQ.3) THEN
+            CALL PREPPSLOC() ! Set up for lon/lat point source
+         ELSE IF (ABS(NCPSOURCE).EQ.4) THEN
+            CALL PREPPSNWM() ! Set up NWM feature information
+         END IF
+      END IF 
 
 C  kmd48.33bc add information for 3D baroclinic simulations
       IF (PREP_ALL) THEN

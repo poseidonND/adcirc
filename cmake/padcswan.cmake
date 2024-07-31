@@ -113,6 +113,7 @@ if(BUILD_PADCSWAN AND PERL_FOUND)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/owiwind.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/rs2.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/owi_ice.F
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/owi_rain.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/itpackv.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/nodalattr.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/globalio.F
@@ -135,8 +136,8 @@ if(BUILD_PADCSWAN AND PERL_FOUND)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/sun.F90
       ${CMAKE_CURRENT_SOURCE_DIR}/src/moon.F90
       ${CMAKE_CURRENT_SOURCE_DIR}/src/sun_moon_system.F90
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/control.F)
-
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/control.F
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/river.F)
   set(PADCSWAN_SOURCES
       ${CMAKE_CURRENT_SOURCE_DIR}/src/couple2swan.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/adcirc.F

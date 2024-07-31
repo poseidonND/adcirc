@@ -278,6 +278,25 @@ c.... tcm v50.66.02 added for time varying bathymetry
       LOGICAL :: FOUND_TBC_NML   !flag to determine if the timebathycontrol namelist was present
       NAMELIST /TimeBathyControl/ NDDT,BTIMINC,BCHGTIMINC
 
+C.. v55 - kmd - added for rainfall
+      LOGICAL :: FOUND_rainCon_NML = .FALSE.
+      INTEGER :: NCRAIN, DYNRAIN !MTC
+      REAL(8) :: CRAIN_TIMINC
+      NAMELIST /rainfallcontrol/ NCRAIN, CRAIN_TIMINC, DYNRAIN !MTC
+
+C.. v55 - kmd - added for point source information
+      LOGICAL :: FOUND_psCon_NML = .FALSE.
+      INTEGER :: NCPSOURCE
+      REAL(8) :: CPS_TIMINC
+      REAL(8) :: CPS_RAMP
+      REAL(8),ALLOCATABLE, TARGET ::  XPS(:),YPS(:),SLPS(:),SFPS(:)
+      INTEGER,ALLOCATABLE :: NNSPS(:)
+      INTEGER,ALLOCATABLE :: IMAP_STAPS_LG(:,:), STAPS_SHARE(:)
+      INTEGER,ALLOCATABLE :: FeatureID(:)
+      REAL(8),ALLOCATABLE :: TNLON(:), TNLAT(:)
+      INTEGER :: NumPS
+      NAMELIST /psourcecontrol/ NCPSOURCE, CPS_TIMINC, CPS_RAMP
+
 c.... !tcm v52.30.01 added for forced use of Smagorinski Eddy Viscosity
       REAL(8) :: SMAG_UPPER_LIM = 100.d0  ! m^2/s (default upper limit)
       REAL(8) :: SMAG_LOWER_LIM = 1.0d-8  ! m^2/s (default lower limit)

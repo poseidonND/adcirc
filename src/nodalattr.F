@@ -156,6 +156,8 @@ C     required for the run, according to the unit 15 control file
       LOGICAL LoadIT_Fric       ! wjp: Internal tides
       LOGICAL LoadOverlandReductionFactor 
       LOGICAL LoadSubgridBarrier
+      LOGICAL LoadVariableManning !MTC for variable Mannings
+
 C
 C     The following flags are .true. if there are data with the
 C     corresponding label in the unit 13 file.
@@ -177,6 +179,8 @@ C     corresponding label in the unit 13 file.
       LOGICAL FoundIT_Fric  ! wjp internal tides
       LOGICAL FoundOverlandReductionFactor
       LOGICAL FoundSubgridBarrier
+      LOGICAL FoundVariableManning !MTC for variable Manning
+
 C
 C     These variables hold the strings which describe the attribute's
 C     units. These data are loaded from the file, but not used as of
@@ -199,6 +203,8 @@ C     v46.00.
       CHARACTER(len=80) IT_FricUnits  ! wjp internal tides
       CHARACTER(len=80) OverlandReductionFactorUnits
       CHARACTER(len=80) subgridBarrierUnits
+      CHARACTER(len=80) variableManningUnits !MTC for variable Manning
+
 C
 C     These variables hold the number of values per node for each
 C     attribute.
@@ -220,6 +226,8 @@ C     attribute.
       INTEGER IT_FricNoOfVals ! wjp internal tides
       INTEGER OverlandReductionFactorNoOfVals
       INTEGER subgridBarrierNoOfVals
+      INTEGER variableManningNoOfVals !MTC for variable Manning
+
 C
 C     These variables hold the default values for each attribute.
       REAL(8) Tau0DefVal
@@ -240,6 +248,8 @@ C     These variables hold the default values for each attribute.
       REAL(8) IT_FricDefVal(3)  ! wjp internal tides
       REAL(8) OverlandReductionFactorDefaultValue
       REAL(8) SubgridBarrierDefaultValue(2)
+      REAL(8) variableManningDefVal(5) !MTC for variable Manning
+
 C
       INTEGER NumOfNodes    ! number of nodes listed in unit 13 file, cf. NP
       INTEGER NAttr         ! number of nodal attributes in the unit 13 file
@@ -314,6 +324,7 @@ C     Variables for bottom friction evaluation along VEW1D channels considering 
       REAL(8), ALLOCATABLE :: subgridBarrier(:,:)
       REAL(8), ALLOCATABLE :: subgridBarrierFriction(:)
       LOGICAL,ALLOCATABLE   :: subgridBarrierOvertopping(:)
+      REAL(8), ALLOCATABLE :: varMann(:,:)   !MTC
 C
 C------------------ For absorbing layer, DW
       REAL(8), pointer:: absorblayer_sigma(:,:), absorblayer_zero(:,:)
@@ -433,6 +444,7 @@ C
       LoadIT_Fric        = .False.  ! WJP
       LoadOverlandReductionFactor = .False.
       LoadSubgridBarrier = .False.
+      LoadVariableManning = .False. !MTC
 C
       FoundTau0           = .False.
       FoundStartDry       = .False.
@@ -452,6 +464,7 @@ C
       FoundIT_Fric        = .False. ! WJP
       FoundOverlandReductionFactor = .False.
       FoundSubgridBarrier = .False.
+      FoundVariableManning = .False. !MTC
 C
 C
       Tau0NoOfVals          = 1
@@ -471,7 +484,9 @@ C
       River_et_WSENoOfVals  = 1
       IT_FricNoOfVals       = 1  ! WJP, could be 3 also, so may change
       OverlandReductionFactorNoOfVals = 1
-      SubgridBarrierNoOfVals = 1 ! 1 or 2 
+      SubgridBarrierNoOfVals = 1 ! 1 or 2
+      variableManningNoOfVals = 5 !MTC
+
 C
       Tau0DefVal             = 0.0
       StartDryDefVal         = 0.0
@@ -496,7 +511,10 @@ C
       River_et_WSEDefVal     = 0.d0      
       IT_FricDefVal          = 0.0 ! WP
       SubgridBarrierDefaultValue = 999999D0
-C
+      DO j=1, variableManningNoOfVals  !MTC
+         variableManningDefVal(j) = 0.0
+      END DO
+
       HighResTimeVaryingTau0     = .False.
       FullDomainTimeVaryingTau0  = .False.
       OutputTau0                 = .False.
@@ -677,6 +695,9 @@ Csb
             FoundRiver_et_WSE     = .TRUE.
          CASE("overland_reduction_factor")
             FoundOverlandReductionFactor = .TRUE.
+         CASE("variable_manning") !MTC
+            FoundVariableManning = .TRUE.
+
          CASE DEFAULT
             scratchMessage = "Unrecognized nodal attribute : " //
      &         trim(na(nattrCount) % attrName)
@@ -855,6 +876,11 @@ C 02.24.2018 WJP: Add spatially varying linear internal tide friction coefficien
             IF (LoadAbsLayerSigma) THEN
                !WJP: need to add
             ENDIF
+        CASE("variable_manning") !MTC
+           IF (LoadVariableManning) THEN
+              varMann  = na(i)%xdmfMatrix
+           ENDIF
+
 ! DW-------------------------
          CASE DEFAULT
             scratchMessage = "Unrecognized nodal attribute : " //
@@ -911,7 +937,9 @@ Corbitt 120321: Allow advection to be turned on locally instead of globally
      &    (.not.FoundOverlandReductionFactor)).or.
 !-- DW for sponge
      &   ((LoadAbsLayerSigma).and.(.not.FoundAbsLayerSigma)).or. 
-     &   ((LoadTau0MinMax).and.(.not.FoundTau0MinMax))) THEN
+     &   ((LoadTau0MinMax).and.(.not.FoundTau0MinMax)) .or.
+     &   ((LoadVariableManning).and.(.not.FoundVariableManning))) THEN  !MTC
+ 
          WRITE(scratchMessage,1111)
  1111   FORMAT('Nodal Attributes file (unit 13) does '
      &        'not contain all the attributes listed in the '
@@ -972,6 +1000,10 @@ Corbitt 120321: Allow advection to be turned on locally instead of globally
           ALLOCATE(subgridBarrier(NumOfNodes,SubgridBarrierNoOfVals))
           ALLOCATE(subgridBarrierOvertopping(NumOfNodes))
       ENDIF
+      IF (LoadVariableManning)THEN  !MTC
+        ALLOCATE(varMann(NumOfNodes,variableManningNoOfVals))
+      ENDIF
+
 C     ----------------------------------------------------------------
       end subroutine allocateNodalAttributes
 C     ----------------------------------------------------------------
@@ -1088,6 +1120,9 @@ C 09232016 WP: Add spatially varying linear internal tide friction coefficient
             LoadIT_Fric = .True.
          CASE("subgrid_barrier")
             LoadSubgridBarrier = .True.
+         CASE("variable_manning") !MTC
+            LoadVariableManning = .True.
+
          CASE("overland_reduction_factor")
             LoadOverlandReductionFactor = .True.
 ! DW---- for sponge layers ---
@@ -1293,6 +1328,12 @@ C 09232016 WP: Add spatially varying linear internal tide friction
             READ(13,'(A80)') SubgridBarrierUnits
             READ(13,*) SubgridBarrierNoOfVals
             READ(13,*) (SubgridBarrierDefaultValue(j),j=1,SubgridBarrierNoOfVals)
+         CASE("variable_manning") !MTC
+            FoundVariableManning = .TRUE.
+            READ(13,'(A80)') variableManningUnits
+            READ(13,*) variableManningNoOfVals
+            READ(13,*) (variableManningDefVal(j),j=1,variableManningNoOfVals)
+
 C---- DW ----- for sponge layer ----------
          CASE ("sponge_generator_layer")  
             FoundAbsLayerSigma = .TRUE.
@@ -1496,6 +1537,13 @@ C 09232016 WP : Spatially varying linear internal tide friction
              ELSE
                SkipDataSet = .True.
              ENDIF
+         CASE("variable_manning") !MTC
+             IF (LoadVariableManning) THEN
+                 CALL LoadAttrMat(varMann, variableManningNoOfVals,
+     &              variableManningDefVal, NumNodesNotDefault,
+     &              NScreen, MyProc, NAbOut)
+             ENDIF  
+                                           
 C          WP
 !------- DW ---- Absorbing layer -----------
          CASE ("sponge_generator_layer") 
@@ -2317,6 +2365,26 @@ C
       ENDIF
 
 C
+      !MTC: Adjust manning depending on velocities to take into account the effect of bedforms
+      IF (LoadManningsN.and.LoadVariableManning) THEN
+         DO I=1, NP
+           IF(varMann(I,1).GT.0.d0) THEN
+              UV1 = SQRT(UU1(I)*UU1(I)+VV1(I)*VV1(I))
+              if (UV1.le.varMann(i,2)) THEN
+                 ManningsN(I) = varMann(I,4)*ManningsN(I)
+              elseif ( UV1.gt.varMann(I,3) ) then
+                 ManningsN(I) = varMann(I,5)*ManningsN(I)
+              ELSE
+                 ManningsN(I) = varMann(I,1)*
+     &                    (((varMann(I,4)-varMann(I,5))/(varMann(I,2)-varMann(I,3)))*
+     &                    (UV1-varMann(I,2))
+     &                    + varMann(I,4))
+              ENDIF
+          ENDIF
+        end do
+      ENDIF
+       !MTC
+
 C     Step 0. Convert Manning's N to Cd, if necessary.
       IF (LoadManningsN) THEN
          DO I=1, NP

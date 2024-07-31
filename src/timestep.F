@@ -82,6 +82,11 @@ C
      &    BCFLAG_LNM, usingDynamicWaterLevelCorrection,
      &    dynamicWaterLevelCorrection1, dynamicWaterLevelCorrection2, L_N, TKM, 
      &    WarnElevDump, nodes_lg, NT, NM, NB, DEBUG, NHOUTONCE,
+C  kmd v53 -- added for precipitation and point source forcing
+     &    NCRAIN,CRAIN_TIMINC,CRAIN_TIME1,CRAIN_TIME2,RAIN1,RAIN2,
+     &    RainfallCurr,RainfallOld,RainODT,totalrain,totalrainapp,
+     &    NCPSOURCE,CPS_TIMINC,CPS_TIME1,CPS_TIME2,PS1,PS2,PSCurr,PSOld,
+     &    PSODT,CPS_RAMP,DivByTotalArea,nearNode,dt, QN_R, QN2_R,
      &    Limit_WaveStressGrad,
      &    earlyterminate, IT_foundNaN, WarnVel, Flag_VelError,
      &    dynamicWaterLevelCorrectionDelta
@@ -109,6 +114,9 @@ C
       USE ADCIRC_MOD, ONLY : ADCIRC_Terminate
 C.... TCM V49.64.01 ADDITIONS FOR ICE
       USE OWI_ICE,ONLY : NCICE1_INIT,NCICE1_GET
+C...  kmd-v53 add for precipitation forcing
+      USE OWI_RAIN,    ONLY: NCRAIN1_INIT,NCRAIN_GET
+      USE READ_RIVER, ONLY : CONVERT_QN, FORMULATE_QFORCE
 C.....sb46.28sb03 added 09/xx/2006
       USE RS2,ONLY : RS2INIT,RS2GET
       USE NodalAttributes, ONLY : 
@@ -162,7 +170,7 @@ c. RJW merged 08/26/2008 from Casey 071219:Added the following variables for 3D 
       INTEGER IE, I, J, K, JJ                  !local loop counters
       INTEGER NM1, NM2, NM3
       INTEGER NC1, NC2, NC3, NCEle
-      INTEGER NCyc
+      INTEGER NCyc, NA
       INTEGER :: itest
       INTEGER :: kemax
       INTEGER :: kvmax
@@ -206,6 +214,14 @@ C   TCM V49.64.01 -- ADDED FOR ICE CONCENTRATION FIELDS
 C   TCM v50.66.02 -- Added for Time Varying Bathymetry
       INTEGER :: IJK
       REAL(8) ETA2TMP,DPTMP,DPTMP2,BTRATIO  !tcm v50.66.01 bathymetry changes
+
+C   kmd v53 -- added for precipitation forcing
+      REAL(8) :: RAINX, CRAIN_Ratio, RainAcc
+      INTEGER :: NHG
+
+C   kmd v53 -- added for point source forcing
+      REAL(8) :: PSX, CPS_Ratio, PSVal, QVal, RampPS
+      INTEGER :: nodenumPS
 
       REAL(8) :: ARG, ARGJ, RFF
 C....... DW
@@ -363,6 +379,14 @@ C------DW
          END IF
       END IF   
 C-----END DW
+
+C... v55.## - cms  Added ramp for point source (completely separate
+C    from all other ramps - not zeroed for flux settling)
+      IF (CPS_RAMP.GT.0.d0 ) THEN
+         RampPS = tanh((2.d0*timeloc/86400.d0)/CPS_RAMP)
+      ELSE
+         RampPS = 1.d0
+      ENDIF
 
 C-------------------TEMPORAL RAMP-------------------------------------
 
@@ -659,6 +683,122 @@ C---------------------BEGIN MET FORCING----------------------------------------
 C
 C----------------------END MET FORCING----------------------------------------
 
+C
+C---------------------BEGIN RAINFALL FORCING----------------------------
+C     kmd: v53 add distributed precipitation forcing to gwce
+C     cms: v55 simplified logic
+      IF (ABS(NCRAIN).EQ.2) THEN
+         IF(TimeLoc.GT.CRAIN_TIME2) THEN
+            CRAIN_TIME1 = CRAIN_TIME2
+            CRAIN_TIME2 = CRAIN_TIME2 + CRAIN_TIMINC
+            DO I=1,NP
+              RAIN1(I) = RAIN2(I)
+              READ(425,*) NHG, RAIN2(I)
+            END DO
+          ENDIF
+      ENDIF
+
+      IF (ABS(NCRAIN).EQ.12) THEN
+         IF(TimeLoc.GT.CRAIN_TIME2) THEN
+            CRAIN_TIME1 = CRAIN_TIME2
+            CRAIN_TIME2 = CRAIN_TIME2 + CRAIN_TIMINC
+            DO I=1,NP
+              RAIN1(I) = RAIN2(I)
+            END DO
+            CALL NCRAIN_GET(RAIN2,NP)
+          ENDIF
+      ENDIF
+
+      IF (NCRAIN.NE.0) THEN
+         CRAIN_Ratio = (TimeLoc-CRAIN_TIME1)/CRAIN_TIMINC
+         DO I=1,NP
+            RAINX = RAIN1(I) + CRAIN_Ratio*(RAIN2(I)-RAIN1(I))
+            RainfallOld(I) = RainfallCurr(I)
+            RainfallCurr(I) = RAINX
+            RainODT(I) = (RainfallCurr(I)-RainfallOld(I))/DT
+            RainAcc = RainfallCurr(I)*DT
+            totalrain(I) = totalrain(I) + RainAcc
+            totalrainapp(I) = totalrainapp(I) + RainAcc*nodecode(I)
+         END DO
+      ENDIF
+C
+C-----------------------END RAINFALL FORCING----------------------------
+
+C
+C-------------------BEGIN POINT SOURCE FORCING--------------------------
+C     kmd: v53 add point source forcing to gwce
+C     cms: v55 replaced if construct with case and simplified
+      SELECT CASE (ABS(NCPSOURCE))
+      CASE (1)  !read node number and intensity from fort.426
+         IF(TimeLoc.GT.CPS_TIME2) THEN
+            CPS_TIME1 = CPS_TIME2
+            CPS_TIME2 = CPS_TIME2 + CPS_TIMINC
+            DO I=1,NP
+              PS1(I) = PS2(I)
+              PS2(I) = 0.D0
+            END DO
+            READ(426,*) numPS
+            DO I=1,numPS
+               READ(426,*) nodenumPS, PSVal
+               PS2(nodenumPS) = PSVal
+            END DO
+         ENDIF
+         CPS_Ratio = (TimeLoc-CPS_TIME1)/CPS_TIMINC
+         DO I=1,NP
+            PSX = RampPS*(PS1(I)+CPS_Ratio*(PS2(I)-PS1(I)))
+            PSOld(I) = PSCurr(I)
+            PSCurr(I) = PSX
+            PSODT(I) = (PSCurr(I)-PSOld(I))/DT
+         END DO
+      CASE (2)  !read node number and discharge from fort.426
+         IF(TimeLoc.GT.CPS_TIME2) THEN
+            CPS_TIME1 = CPS_TIME2
+            CPS_TIME2 = CPS_TIME2 + CPS_TIMINC
+            DO I=1,NP
+              PS1(I) = PS2(I)
+              PS2(I) = 0.D0
+            END DO
+            READ(426,*) numPS
+            DO I=1,numPS
+               READ(426,*) nodenumPS, QVal
+               PS2(nodenumPS) = QVal
+            END DO
+         ENDIF
+         CPS_Ratio = (TimeLoc-CPS_TIME1)/CPS_TIMINC
+         DO I=1,NP
+            PSX=RampPS*(PS1(I)+CPS_Ratio*(PS2(I)-PS1(I)))*
+     &          3.D0*DivByTotalArea(I)
+            PSOld(I) = PSCurr(I)
+            PSCurr(I) = PSX
+            PSODT(I) = (PSCurr(I)-PSOld(I))/DT
+         END DO
+      CASE (3)  !read discharge from fort.430
+         IF(TimeLoc.GT.CPS_TIME2) THEN
+            CPS_TIME1 = CPS_TIME2
+            CPS_TIME2 = CPS_TIME2 + CPS_TIMINC
+            DO I=1,NP
+              PS1(I) = PS2(I)
+              PS2(I) = 0.D0
+            END DO
+            DO I=1,numPS !number of PS fixed; read during read_input
+               READ(430,*) QVal
+               ! multiple NWM features may meet at a junction
+               ! therefore must add contributions, NOT replace
+               PS2(nearNode(I)) = PS2(nearNode(I)) + QVal
+            END DO
+         ENDIF
+         CPS_Ratio = (TimeLoc-CPS_TIME1)/CPS_TIMINC
+         DO I=1,NP
+            PSX=RampPS*(PS1(I)+CPS_Ratio*(PS2(I)-PS1(I)))*
+     &          3.D0*DivByTotalArea(I)
+            PSOld(I) = PSCurr(I)
+            PSCurr(I) = PSX
+            PSODT(I) = (PSCurr(I)-PSOld(I))/DT
+         END DO
+      END SELECT
+C
+C---------------------END POINT SOURCE FORCING--------------------------
+
 
 C...  UPDATE THE WAVE RADIATION STRESS AND READ IN NEW VALUES FROM
 C.... UNIT 23.  APPLY Ramp FUNCTION.  ADD RADIATION STRESS TO WIND
@@ -855,8 +995,7 @@ Casey 140701: Added the following IF statement.
 Casey 140701: Ending the IF statement.
            ENDIF
          END IF
-      END IF
-
+       END IF
 
 ! Apply the tide potential forcing subroutine      
       call applyTidePotentialForcing(TimeLoc, TimeH)
@@ -919,6 +1058,20 @@ C...
                      READ(20,*) QNIN2(J),ENIN2(J)
                   ENDIF
                END DO
+               IF((ICS.EQ.20).OR.(ICS.EQ.21).OR.(ICS.EQ.22) !Projection starts here
+     &              .OR.(ICS.EQ.23).OR.(ICS.EQ.24)) THEN
+                       CALL CONVERT_QN(QNIN1, QNIN2) !AT 2023
+                       CALL FORMULATE_QFORCE(QN_R,QN2_R) !Correction for Rivers
+
+                       DO J=1,NVEL
+                           QNIN2(J)=0.D0
+                       IF ((LBCODEI(J).EQ.2).OR.(LBCODEI(J).EQ.12)
+     &                    .OR.(LBCODEI(J).EQ.22)) THEN
+                          QNIN2(J) = QN2_R(J)
+                       ENDIF
+                       END DO
+               ENDIF !projection ends here        
+
             ENDIF
 
             QTRATIO=(TimeLoc-QTIME1)/FTIMINC
