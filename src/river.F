@@ -80,7 +80,7 @@ C-------------------END OF DATA DECLARATION-----C
        END DO
 
        DO J = 1,NVEL
-         IF ((LBCODEI(J).EQ.22)) THEN
+         IF ((LBCODEI(J).EQ.22).OR.(LBCODEI(J).EQ.32)) THEN
            Q(J) = QNIN1(J)     
            Q2(J) = QNIN2(J)
 !           print *, "QNIN1", QNIN1(J)
@@ -125,7 +125,7 @@ C********************************************************
        INTEGER P
 
         DO P = 1,NVEL
-         IF (LBCODEI(P).EQ.22) THEN 
+         IF ((LBCODEI(P).EQ.22).OR.(LBCODEI(P).EQ.32)) THEN 
 
           QN_R(P) = SFCX(FORCENODES(P))*QX1_R(P)*CSII(P) +
      &        SFCY(FORCENODES(P))*QY1_R(P)*SIII(P)*YCSFAC(FORCENODES(P))
@@ -157,7 +157,7 @@ C*********************************************************
        IMPLICIT NONE 
        ALLOCATE(Q(MNVEL), Q2(MNVEL),FORCENODES(MNVEL))
        DO J = 1, NVEL
-        IF ((LBCODEI(J).EQ.22)) THEN 
+        IF ((LBCODEI(J).EQ.22).OR.(LBCODEI(J).EQ.32)) THEN 
 
               FORCENODES(J) = NBV(J)
              

@@ -268,14 +268,15 @@ C
                   DO J=1,NVEL
                        QNIN1(J) = 0.D0
                          IF ((LBCODEI(J).EQ.2).OR.(LBCODEI(J).EQ.12)
-     &                           .OR.(LBCODEI(J).EQ.22)) THEN
+     &                    .OR.(LBCODEI(J).EQ.22).OR.(LBCODEI(J).EQ.32)) THEN
                                       QNIN1(J) = QN_R(J)
                          ENDIF
                   END DO
                   DO J=1,NVEL
                          QNIN2(J)=0.D0
                           IF ((LBCODEI(J).EQ.2).OR.(LBCODEI(J).EQ.12)
-     &                            .OR.(LBCODEI(J).EQ.22)) THEN
+     &                  .OR.(LBCODEI(J).EQ.22).OR.(LBCODEI(J).EQ.32)) THEN
+ 
                                        QNIN2(J) = QN2_R(J)
                           ENDIF
                   END DO
