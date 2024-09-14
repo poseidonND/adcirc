@@ -272,8 +272,14 @@ c...  kmd - v53 - added output variables for precipitation
       REAL(8), ALLOCATABLE :: QY2_R(:)
       REAL(8), ALLOCATABLE :: TAUX_R(:)
       REAL(8), ALLOCATABLE :: TAUY_R(:)
+!...................Adding local variables u_amp_gl2loc..etc
 
-      
+      REAL(8), ALLOCATABLE ::  U_PHS_GL2LOC(:) 
+      REAL(8), ALLOCATABLE ::  V_PHS_GL2LOC(:)
+      REAL(8), ALLOCATABLE ::  U_AMP_GL2LOC(:)
+      REAL(8), ALLOCATABLE ::  V_AMP_GL2LOC(:)
+      REAL(8), ALLOCATABLE ::  U_Syn(:)
+      REAL(8), ALLOCATABLE ::  V_Syn(:) 
 #if defined CSWAN || defined ADCSWAN     
       !...Local SWAN Arrays
       REAL(8), ALLOCATABLE, TARGET      :: SWAN_HSOut(:)
@@ -1397,7 +1403,7 @@ C...
 C...Allocate space for arrays used for station elevation output
 C...
       SUBROUTINE ALLOC_MAIN7()
-      USE SIZES, ONLY : MNSTAE, MNVEL
+      USE SIZES, ONLY : MNSTAE, MNVEL, MNP
       IMPLICIT NONE
 C
       ALLOCATE ( NNE(MNSTAE),ET00(MNSTAE))
@@ -1414,6 +1420,9 @@ C...  kmd v53 added for precipitation station output
       ALLOCATE(QX2_R(MNVEL), QY2_R(MNVEL))
       ALLOCATE(QN_R(MNVEL))
       ALLOCATE(QN2_R(MNVEL))
+
+      ALLOCATE(U_PHS_GL2LOC(MNP), V_PHS_GL2LOC(MNP),U_AMP_GL2LOC(MNP),V_AMP_GL2LOC(MNP))
+      ALLOCATE(U_Syn(MNP), V_Syn(MNP))
 
       RETURN
       END SUBROUTINE ALLOC_MAIN7

@@ -2589,7 +2589,7 @@ C     ----------------------------------------------------------------
       SUBROUTINE Apply2DInternalWaveDrag(NP, TK, TKM, U, V, DP,
      & IT)      
       USE GLOBAL, ONLY: CBaroclinic, CORIF, DTDP, NB, NM, IDEN,
-     &                  IFSPROTS, RAMP
+     &                  IFSPROTS, RAMP, U_Syn, V_Syn
       USE MESH, ONLY: DRVMAP2DSPVEC, UVECTMP, VVECTMP, RVELF
       USE INTERNALTIDE, ONLY: UBar, VBar, UNTIDE
       IMPLICIT NONE
@@ -2654,9 +2654,9 @@ C              (unnecessary for IT_FricNoOfVals == 1)
          ENDIF
          Baroc: IF (CBaroclinic.and.abs(IDEN).ge.5) THEN
 C           2DDI ADCIRC with baroclinic coupling
-            if (abs(IDEN).ne.7) then
-               CALL UNTIDE(U,V,IT)
-            endif
+            !if (abs(IDEN).ne.7) then
+            !   CALL UNTIDE(U,V,IT)
+            !endif
             IF (IT_FricNoOfVals == 5) THEN
 C           Use the "Nonlocal" Nycander (2005) type tensor wave drag
 C           1st column is coefficient, 2nd and 3rd columns are the Hx and Hy slopes,
@@ -2729,9 +2729,14 @@ C           1st column is coefficient, 2nd column is the squared hypotenuse slop
                         Dtotal = Cxx*U(I)**2d0 + 
      &                           2*Cxy*U(I)*V(I) +
      &                           Cyy*V(I)**2d0
-                        Dtidal = Cxx*(U(I)-UBar(I))**2d0 + 
-     &                           2*Cxy*(U(I)-UBar(I))*(V(I)-VBar(I)) +
-     &                           Cyy*(V(I)-VBar(I))**2d0
+!                        Dtidal = Cxx*(U(I)-UBar(I))**2d0 + 
+!     &                           2*Cxy*(U(I)-UBar(I))*(V(I)-VBar(I)) +
+!     &                           Cyy*(V(I)-VBar(I))**2d0
+
+                        Dtidal = Cxx*(U_Syn(I))**2d0 + 
+     &                           2*Cxy*(U_Syn(I))*(V_Syn(I)) +
+     &                           Cyy*(V_Syn(I))**2d0
+
                         IF (Dtotal.lt.1d-10) THEN
                            adju = 0d0
                         ELSE

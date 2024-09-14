@@ -87,12 +87,12 @@ C  kmd v53 -- added for precipitation and point source forcing
      &    RainfallCurr,RainfallOld,RainODT,totalrain,totalrainapp,
      &    NCPSOURCE,CPS_TIMINC,CPS_TIME1,CPS_TIME2,PS1,PS2,PSCurr,PSOld,
      &    PSODT,CPS_RAMP,DivByTotalArea,nearNode,dt, QN_R, QN2_R,
-     &    Limit_WaveStressGrad,
+     &    Limit_WaveStressGrad,U_Syn, V_Syn,
      &    earlyterminate, IT_foundNaN, WarnVel, Flag_VelError,
      &    dynamicWaterLevelCorrectionDelta
       USE ADC_CONSTANTS, ONLY: rhoWat0, sigT0, waveWindMultiplier,
      &                         WaveStressGrad_Cap 
-     
+      USE SYNTHESIS, ONLY: PROCESS_UVTidalSynthesis 
       USE GWCE, ONLY : solveGWCE, numitr
       USE MOMENTUM, ONLY : solveMomentumEq
       USE WETDRY, ONLY : computeWettingAndDrying
@@ -611,6 +611,10 @@ C     2DDI.Set up the 2D friction coefficient
          ! WJP 02.24.2018 Get the wave drag coefficients
          ! that are put into TKM (which include TK from bottom friction)
          IF (CBaroclinic) THEN
+            
+
+            CALL PROCESS_UVTidalSynthesis(U_Syn,V_Syn,IT)
+    
             CALL Apply2DInternalWaveDrag(NP, TK, TKM, UU1, VV1, DP, IT)
             ! CPB 3/9/2023: vertically averaged momentum dispersion as a
             ! power law function. If NOLIBF =/= 3 then this just returns
