@@ -274,10 +274,10 @@ c...  kmd - v53 - added output variables for precipitation
       REAL(8), ALLOCATABLE :: TAUY_R(:)
 !...................Adding local variables u_amp_gl2loc..etc
 
-      REAL(8), ALLOCATABLE ::  U_PHS_GL2LOC(:) 
-      REAL(8), ALLOCATABLE ::  V_PHS_GL2LOC(:)
-      REAL(8), ALLOCATABLE ::  U_AMP_GL2LOC(:)
-      REAL(8), ALLOCATABLE ::  V_AMP_GL2LOC(:)
+      REAL(8), ALLOCATABLE, DIMENSION(:,:) ::  U_PHS_GL2LOC
+      REAL(8), ALLOCATABLE, DIMENSION(:,:) ::  V_PHS_GL2LOC
+      REAL(8), ALLOCATABLE, DIMENSION(:,:) ::  U_AMP_GL2LOC
+      REAL(8), ALLOCATABLE, DIMENSION(:,:) ::  V_AMP_GL2LOC
       REAL(8), ALLOCATABLE ::  U_Syn(:)
       REAL(8), ALLOCATABLE ::  V_Syn(:) 
 #if defined CSWAN || defined ADCSWAN     
@@ -1421,7 +1421,7 @@ C...  kmd v53 added for precipitation station output
       ALLOCATE(QN_R(MNVEL))
       ALLOCATE(QN2_R(MNVEL))
 
-      ALLOCATE(U_PHS_GL2LOC(MNP), V_PHS_GL2LOC(MNP),U_AMP_GL2LOC(MNP),V_AMP_GL2LOC(MNP))
+      ALLOCATE(U_PHS_GL2LOC(MNP,8), V_PHS_GL2LOC(MNP,8),U_AMP_GL2LOC(MNP,8),V_AMP_GL2LOC(MNP,8))
       ALLOCATE(U_Syn(MNP), V_Syn(MNP))
 
       RETURN

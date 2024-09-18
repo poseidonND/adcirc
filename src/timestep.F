@@ -56,7 +56,7 @@ C
 #ifdef IEEE_DEBUG
       USE, INTRINSIC :: IEEE_ARITHMETIC
 #endif
-      USE SIZES, ONLY : MNP, MNWPROH, MYPROC
+      USE SIZES, ONLY : MNP, MNWPROH, MYPROC, LOCALDIR
       USE GLOBAL, ONLY : UU1, VV1, QX1, QY1, QX2, QY2, UU2, VV2, MOM_LV_X,
      &    MOM_LV_Y, WSX2, WSY2, PR1, PR2, TiP1, TiP2, UU0, VV0, QY0, 
      &    GWCE_LV, TRANS_LV_B, TRANS_LV_A, WSX1, WSY1, dp1, dp2, QN0, 
@@ -232,7 +232,9 @@ C....... DW
 C.......
       LOGICAL ISFRONT
       LOGICAL foundNaN
-      
+!     Aman..Adding UVfile out
+!      CHARACTER(20) :: UV_out  
+!      CHARACTER(20) :: UV_adc    
       IF (IT .EQ. 1) THEN
 !.......DMW202401 On first timestep of a cold start, find H2 at start of timestepper since ETA2 = ETA1
         DO I = 1,NP
@@ -613,8 +615,17 @@ C     2DDI.Set up the 2D friction coefficient
          IF (CBaroclinic) THEN
             
 
-            CALL PROCESS_UVTidalSynthesis(U_Syn,V_Syn,IT)
-    
+            CALL PROCESS_UVTidalSynthesis(U_Syn,V_Syn,TimeLoc)
+          !  UV_out = TRIM(LOCALDIR)//'/'//'UV_out.txt'
+          !  UV_adc = TRIM(LOCALDIR)//'/'//'UV_adc.txt'
+          !  IF(IT.EQ.2) THEN
+          !        open( unit = 1061, file = UV_out, action = "write" ) ;
+          !       open( unit = 1062, file = UV_adc, action = "write" ) ;  
+          !      write (1061, *) U_syn, V_syn 
+          !      write (1062, *) UU1, VV1
+          !        close (1061)
+          !        close (1062)
+          !  ENDIF
             CALL Apply2DInternalWaveDrag(NP, TK, TKM, UU1, VV1, DP, IT)
             ! CPB 3/9/2023: vertically averaged momentum dispersion as a
             ! power law function. If NOLIBF =/= 3 then this just returns

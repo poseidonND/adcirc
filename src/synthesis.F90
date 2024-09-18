@@ -28,33 +28,34 @@ MODULE synthesis
 
      CONTAINS  
 
-       SUBROUTINE ReadUVSynthesisNC(F_NAME,CON_NAME,CONID)
+       SUBROUTINE ReadUVSynthesisNC(F_NAME, CONID)
                
 #ifdef ADCNETCDF              
        USE NETCDF   
 #endif     
        USE GLOBAL, ONLY: U_AMP_GL2LOC, V_AMP_GL2LOC,U_PHS_GL2LOC, V_PHS_GL2LOC
-       USE MESSENGER, ONLY : MYPROC  
+       USE MESSENGER, ONLY : MYPROC 
+       USE SIZES, ONLY : MNP 
        IMPLICIT NONE
 
-       REAL(8), DIMENSION(:), ALLOCATABLE :: U_AMP
-       REAL(8), DIMENSION(:), ALLOCATABLE :: V_AMP
-       REAL(8), DIMENSION(:), ALLOCATABLE :: U_PHS
-       REAL(8), DIMENSION(:), ALLOCATABLE :: V_PHS
+       REAL(8), DIMENSION(:), ALLOCATABLE :: U_AMP, U_AMP_LOCAL
+       REAL(8), DIMENSION(:), ALLOCATABLE :: V_AMP, V_AMP_LOCAL
+       REAL(8), DIMENSION(:), ALLOCATABLE :: U_PHS, U_PHS_LOCAL
+       REAL(8), DIMENSION(:), ALLOCATABLE :: V_PHS, V_PHS_LOCAL
        REAL(8), ALLOCATABLE :: FFT(:), FACET(:)
-       CHARACTER(10), INTENT(IN) :: CON_NAME
+       CHARACTER(10) :: CON_NAME
        CHARACTER(10), DIMENSION(:), ALLOCATABLE :: CONST
        CHARACTER(10) :: tempname
        
        CHARACTER(20),INTENT(IN) :: F_NAME
-       INTEGER, INTENT(OUT) :: CONID
+       INTEGER, INTENT(IN) :: CONID
        INTEGER :: NODEID, LEN_CONST, LEN_NODE, CONST_ID
        INTEGER :: NCID, VARID, RETVAL, I
-
+       INTEGER, SAVE :: NT_aman
        !INTEGER, INTENT(IN) :: TimeStep
        
 
-      
+       NT_aman = 1;     
 
        retval = nf90_open(F_NAME, NF90_NOWRITE, ncid)
        if (retval /= nf90_noerr) then
@@ -73,8 +74,10 @@ MODULE synthesis
        ! print *, "Number of constituents:", LEN_CONST
        ! print *, "Number of nodal values:", LEN_NODE
 
-       ALLOCATE(U_AMP(LEN_NODE),V_AMP(LEN_NODE))
-       ALLOCATE(U_PHS(LEN_NODE),V_PHS(LEN_NODE))
+       ALLOCATE(U_AMP(LEN_NODE),U_AMP_LOCAL(MNP))
+       ALLOCATE(V_AMP(LEN_NODE),V_AMP_LOCAL(MNP))
+       ALLOCATE(U_PHS(LEN_NODE),U_PHS_LOCAL(MNP))
+       ALLOCATE(V_PHS(LEN_NODE),V_PHS_LOCAL(MNP))
        ALLOCATE(CONST(LEN_CONST))
        ALLOCATE(FFT(LEN_CONST), FACET(LEN_CONST))
         
@@ -91,12 +94,12 @@ MODULE synthesis
        end if
 
 
-       do i = 1,LEN_CONST
-            tempname = CONST(I)
-            IF(TRIM(tempname) == TRIM(CON_NAME)) THEN
-                 CONID = I
-            ENDIF   
-       end do
+       !do i = 1,LEN_CONST
+       !     tempname = CONST(I)
+       !     IF(TRIM(tempname) == TRIM(CON_NAME)) THEN
+       !          CONID = I
+       !     ENDIF   
+       !end do
 
        !print *, 'CONID:', CONID
 
@@ -106,7 +109,7 @@ MODULE synthesis
         stop
        end if 
 
-       retval = nf90_get_var(ncid, varid, U_AMP, start = [CONID, 1],& 
+       retval = nf90_get_var(ncid, varid, U_AMP,start = [CONID, 1],& 
                 count = [1, LEN_NODE]) 
 
        if (retval /= nf90_noerr) then
@@ -121,8 +124,9 @@ MODULE synthesis
         stop
        end if 
 
-       retval = nf90_get_var(ncid, varid, V_AMP, start = [CONID, 1],& 
+       retval = nf90_get_var(ncid, varid, V_AMP,start = [CONID, 1],& 
                 count = [1, LEN_NODE]) 
+ 
 
        if (retval /= nf90_noerr) then
          print *, "Error reading v_amp data:", trim(nf90_strerror(retval))
@@ -137,8 +141,9 @@ MODULE synthesis
         stop
        end if 
 
-       retval = nf90_get_var(ncid, varid, U_PHS, start = [CONID, 1],& 
+       retval = nf90_get_var(ncid, varid, U_PHS,start = [CONID, 1],& 
                 count = [1, LEN_NODE]) 
+ 
 
        if (retval /= nf90_noerr) then
          print *, "Error reading u_phs data:", trim(nf90_strerror(retval))
@@ -151,8 +156,8 @@ MODULE synthesis
         stop
        end if 
 
-       retval = nf90_get_var(ncid, varid, V_PHS, start = [CONID, 1],& 
-                count = [1, LEN_NODE]) 
+       retval = nf90_get_var(ncid, varid, V_PHS,start = [CONID, 1],& 
+                count = [1, LEN_NODE])  
 
        if (retval /= nf90_noerr) then
          print *, "Error reading v_phs data:", trim(nf90_strerror(retval))
@@ -187,11 +192,12 @@ MODULE synthesis
        end if
 
        
-       CALL MAP_UV_LOCAL(U_AMP, V_AMP, U_PHS, V_PHS, U_AMP_GL2LOC, V_AMP_GL2LOC, U_PHS_GL2LOC, V_PHS_GL2LOC)
-      
-         !IF(MYPROC.EQ.0) THEN
-          !        print *, " I have crossed calling map_uv_local"
-          !ENDIF 
+       CALL MAP_UV_LOCAL(U_AMP, V_AMP, U_PHS, V_PHS, U_AMP_LOCAL, V_AMP_LOCAL, U_PHS_LOCAL, V_PHS_LOCAL,NT_aman)
+       
+        NT_aman = NT_aman + 1;
+        ! IF(MYPROC.EQ.0) THEN
+      !            print *, " I have crossed calling map_uv_local"
+       !  ENDIF 
 
       END SUBROUTINE ReadUVSynthesisNC   
 
@@ -202,24 +208,31 @@ MODULE synthesis
 !  U_PHS_GL2LOC, V_PHS_Gl2LOC Using the MAPToLOCAL_REAL Subroutine 
 !---------------------------------------------------------------------------------------
 
-     SUBROUTINE MAP_UV_LOCAL(U_AMP, V_AMP, U_PHS, V_PHS, U_AMP_GL2LOC, V_AMP_GL2LOC, U_PHS_GL2LOC, V_PHS_GL2LOC)
+     SUBROUTINE MAP_UV_LOCAL(U_AMP, V_AMP, U_PHS, V_PHS, U_AMP_LOCAL, V_AMP_LOCAL, U_PHS_LOCAL, V_PHS_LOCAL,LOOPCOUNT)
 
      USE GL2LOC_MAPPING, ONLY: MAPTOLOCAL_REAL
-     USE MESSENGER, ONLY : MYPROC 
+     USE MESSENGER, ONLY : MYPROC
+     USE GLOBAL, ONLY: U_AMP_GL2LOC, V_AMP_GL2LOC,U_PHS_GL2LOC, V_PHS_GL2LOC
+
      IMPLICIT NONE
 
      REAL(8), INTENT(IN) :: U_AMP(:), V_AMP(:), U_PHS(:), V_PHS(:)
-     REAL(8), INTENT(OUT) :: U_AMP_GL2LOC(:), V_AMP_GL2LOC(:), U_PHS_GL2LOC(:), V_PHS_GL2LOC(:)
-       
+     REAL(8), INTENT(OUT) :: U_AMP_LOCAL(:), V_AMP_LOCAL(:), U_PHS_LOCAL(:), V_PHS_LOCAL(:)
+    ! REAL(8), INTENT(OUT) :: U_AMP_GL2LOC(:,:), V_AMP_GL2LOC(:,:), U_PHS_GL2LOC(:,:), V_PHS_GL2LOC(:,:)
+     INTEGER :: loopcount  
           !IF(MYPROC.EQ.0) THEN
           !        print *, " I am in MAP_UV_LOCAL"
           !ENDIF 
-
-     CALL MAPTOLOCAL_REAL(U_AMP, U_AMP_GL2LOC)
-     CALL MAPTOLOCAL_REAL(V_AMP, V_AMP_GL2LOC)
-     CALL MAPTOLOCAL_REAL(U_PHS, U_PHS_GL2LOC)
-     CALL MAPTOLOCAL_REAL(V_PHS, V_PHS_GL2LOC)
-
+       
+        CALL MAPTOLOCAL_REAL(U_AMP, U_AMP_LOCAL)
+        CALL MAPTOLOCAL_REAL(V_AMP, V_AMP_LOCAL)
+        CALL MAPTOLOCAL_REAL(U_PHS, U_PHS_LOCAL)
+        CALL MAPTOLOCAL_REAL(V_PHS, V_PHS_LOCAL)
+       
+        U_AMP_GL2LOC(:,loopcount) = U_AMP_LOCAL
+        V_AMP_GL2LOC(:,loopcount) = V_AMP_LOCAL
+        U_PHS_GL2LOC(:,loopcount) = U_PHS_LOCAL
+        V_PHS_GL2LOC(:,loopcount) = V_PHS_LOCAL
 
      END SUBROUTINE MAP_UV_LOCAL
 
@@ -231,7 +244,7 @@ MODULE synthesis
          
       USE GL2LOC_MAPPING, ONLY : MAPTOLOCAL_REAL
       USE GLOBAL, ONLY : DTDP, U_AMP_GL2LOC, V_AMP_GL2LOC,U_PHS_GL2LOC, V_PHS_GL2LOC,&
-                        FFT,FACET
+                        FFT,FACET, RampTIP
       USE MESH, ONLY : NP
       USE MESSENGER, ONLY : MYPROC 
       USE ADC_CONSTANTS, ONLY : deg2rad
@@ -239,10 +252,12 @@ MODULE synthesis
 
       REAL(8), INTENT(OUT) :: U_Syn(:), V_Syn(:)
       REAL(8),DIMENSION(8) :: OMEGA_CONST
-      INTEGER :: TimeStep, K, J
+      INTEGER :: K, J
+      REAL(8), INTENT(IN) :: TimeStep
       CHARACTER(10), DIMENSION(8) :: CONST8_NAME 
       CHARACTER(20) :: FNAME = 'synthesis.nc'
-      INTEGER :: CONID
+      INTEGER,DIMENSION(8) :: CONID
+      CHARACTER(10) :: tempconst
        
       !REAL(8),ALLOCATABLE :: U_AMP_GL2LOC(:), V_AMP_GL2LOC(:), U_PHS_GL2LOC(:), V_PHS_GL2LOC(:)
 
@@ -251,26 +266,30 @@ MODULE synthesis
       OMEGA_CONST = (/ 1.405189028e-04,1.454441043e-04,6.495854130e-05,&
              6.759774407e-05,7.252294576e-05,7.292115851e-05,1.378796998e-04,1.458423170e-04 /)  
       !ALLOCATE(U_Syn(NP), V_Syn(NP))
+      CONID = (/ 11,12,6,7,8,9,10,13 /)
       
-      
-         IF(MYPROC.EQ.0) THEN
-                  print *, " I am at Timestep:", TimeStep
-          ENDIF 
+         !IF(MYPROC.EQ.0) THEN
+         !         print *, " I am at Timestep:", TimeStep
+         ! ENDIF 
       
        DO J = 1, NP
             U_Syn(J) = 0.d0
             V_Syn(J) = 0.d0
        END DO
+       
+   
+       
       DO K = 1,8
-          
-           call ReadUVSynthesisNC(FNAME, CONST8_NAME(K), CONID)
-          
+       IF(TimeStep.EQ.1) THEN
+            call ReadUVSynthesisNC(FNAME, CONID(K))
+
+      ENDIF
           
           DO J = 1, NP
              ! -1 as one of the constituents is steady in fort.54.nc
 
-             U_Syn(J) = U_Syn(J) + U_AMP_GL2LOC(J)*FFT(CONID-1)*COS((OMEGA_CONST(K))*TimeStep - U_PHS_GL2LOC(J) + FACET(CONID-1))
-             V_Syn(J) = V_Syn(J) + V_AMP_GL2LOC(J)*FFT(CONID-1)*COS((OMEGA_CONST(K))*TimeStep - V_PHS_GL2LOC(J) + FACET(CONID-1))
+             U_Syn(J) = U_Syn(J) + RampTIP*U_AMP_GL2LOC(J,K)*FFT(CONID(K)-1)*COS((OMEGA_CONST(K))*TimeStep - U_PHS_GL2LOC(J,K) + FACET(CONID(K)-1))
+             V_Syn(J) = V_Syn(J) + RampTIP*V_AMP_GL2LOC(J,K)*FFT(CONID(K)-1)*COS((OMEGA_CONST(K))*TimeStep - V_PHS_GL2LOC(J,K) + FACET(CONID(K)-1))
 
           END DO
       END DO
