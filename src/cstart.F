@@ -71,6 +71,7 @@ C
       USE OWI_ICE, ONLY : NCICE1_INIT, NCICE1_GET  !tcm v49.64.01
       USE OWI_RAIN, ONLY : NCRAIN1_INIT, NCRAIN_GET  !kmd v55
       USE READ_RIVER, ONLY : CONVERT_QN, FORMULATE_QFORCE, INIT_RIVER
+      USE NETCDF_RAIN, ONLY: NETCDFRAIN_INIT, NETCDFRAIN_GET
       USE RS2,ONLY : RS2INIT,RS2GET            ! sb added 09/xx/2006
       USE NODALATTRIBUTES, ONLY : outputTau0
       USE WRITE_OUTPUT, only : outputNodeCode, outputNOFF,
@@ -405,6 +406,19 @@ C... Read in the time level 1 and 2
              Rainfallcurr(I) = RAIN1(I)
            END DO
          END IF
+         IF (ABS(NCRAIN).EQ.14) THEN
+           CALL NETCDFRAIN_INIT()
+           CALL NETCDFRAIN_GET(RAIN1,NP)
+           CALL NETCDFRAIN_GET(RAIN2,NP)
+           CRAIN_TIME1 = STATIM*86400.D0
+           CRAIN_TIME2 = CRAIN_TIME1 + CRAIN_TIMINC
+           DO I=1,NP
+             Rainfallcurr(I) = RAIN1(I)
+            ! write(16,*) Rainfallcurr
+          END DO
+           
+         END IF
+
       END IF
 
 C.. cms - v55 -- added this for point source

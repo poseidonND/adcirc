@@ -236,6 +236,11 @@ C
       !jgf: Water level correction data
       type(stationData), private, save :: dynamiccorrectionSta ! for dynamicwaterlevelcorrection.61
 C
+
+      ! DW
+      type(stationData), private, save :: RainSta ! rain station (fort.901)
+
+
       TYPE, PRIVATE :: nodalData
          INTEGER ncid              ! the id of its netcdf file
          REAL(8) :: initial_value ! array will be initialized to this
@@ -311,6 +316,11 @@ C++
       !jgf: Water level correction data
       type(nodalData), private, save :: dynamiccorrection ! for dynamicwaterlevelcorrection.63
 C
+
+      !c DW
+      type(nodalData), private, save:: RainFallRate 
+      
+
       TYPE, PRIVATE :: hotstartData
          INTEGER lun               ! ADCIRC's logical unit number
          INTEGER ncid              ! the id of its netcdf file
@@ -506,6 +516,11 @@ C++ GML 20200528
          CASE (93)
             CALL initNodalDataFile(CICEAF, descript1, reterr)
 C++
+         CASE (901)  ! DW - 'Applied rain fall' station file 
+             CALL initStationFile( RainSta, descript1, reterr)     
+         CASE (903) ! DW - rainfall rate global file 
+            CALL initNodalDataFile( RainFallRate, descript1, reterr)
+
          CASE(173)
             CALL initNodalDataFile(wDrag, descript1, reterr)
          CASE(90)
@@ -1364,6 +1379,30 @@ C++ GML 20200605
             CALL check_err(iret)
             sta%statnames => STATNAMEM
 c ++ GML
+         CASE (901) ! DW
+            sta%station_data_dims(1) = sta%num_sta_dim_id
+            sta%station_data_dims(2) = sta%myTime%timenc_dim_id
+
+            iret = nf90_def_var(sta%ncid, 'Applied_rainfall', NF90_DOUBLE,
+     &         sta%station_data_dims, sta%station_data_id)
+            CALL check_err(iret)
+            iret = nf90_put_att(sta%ncid, sta%station_data_id,
+     &         'long_name', 'station rainfall rate')
+            CALL check_err(iret)
+            iret = nf90_put_att(sta%ncid, sta%station_data_id,
+     &         'standard_name', 'station rainfall rate')
+            CALL check_err(iret)
+            iret = nf90_put_att(sta%ncid, sta%station_data_id,
+     &         'units', 'm/s')
+            CALL check_err(iret)
+            iret = nf90_put_att(sta%ncid, sta%station_data_id,
+     &         '_FillValue', doubleval)
+            CALL check_err(iret)
+!            iret = nf90_put_att(sta%ncid, sta%station_data_id,
+!     &         'positive', 'up')
+!            CALL check_err(iret)
+            sta%statnames => STATNAME
+
 
          CASE(109) !       O F F S E T . 6 1
 
@@ -1456,7 +1495,7 @@ C     netcdf4 file format.
      &             1, 1, 2))
             CALL check_err(nf90_def_var_deflate(sta%ncid, sta%hg_v_station_data_id,
      &             1, 1, 2))
-         CASE(61,71,91,109) ! GML added 91 20210727
+         CASE(61,71,91,109,901) ! GML added 91 20210727, DW - add 94
             iret = nf90_def_var_deflate(sta%ncid, sta%station_data_id,
      &             1, 1, 2)
             CALL check_err(iret)
@@ -2797,7 +2836,46 @@ C++ GML 20200528
             CALL check_err(iret)
 C++
 
-         CASE(164)
+C DW            
+         CASE (903)
+            dat%varnames(1) = 'rainfallrate'
+            dat%nodal_data_dims(1) = dat%myMesh%num_nodes_dim_id
+            dat%nodal_data_dims(2) = dat%myTime%timenc_dim_id
+
+            iret = nf90_def_var(dat%ncid,trim(dat%varnames(1)),
+     &             NF90_DOUBLE, dat%nodal_data_dims, dat%nodal_data_id)
+            CALL check_err(iret)
+
+            iret = nf90_put_att(dat%ncid, dat%nodal_data_id,
+     &           'long_name', 'rainfall rate')
+            CALL check_err(iret)
+
+            iret = nf90_put_att(dat%ncid, dat%nodal_data_id,
+     &           'standard_name', 'rainfall rate')
+            CALL check_err(iret)
+
+            !
+            call putUnitsAttribute(dat%ncid, dat%nodal_data_id,
+     &                 'm s-1', 'ft s-1')
+
+            iret = nf90_put_att(dat%ncid, dat%nodal_data_id,
+     &             '_FillValue', doubleval)
+            CALL check_err(iret)
+
+            iret = nf90_put_att(dat%ncid, dat%nodal_data_id,
+     &             'coordinates', 'time y x')
+            CALL check_err(iret)
+
+            iret = nf90_put_att(dat%ncid, dat%nodal_data_id,
+     &             'location', 'node')
+            CALL check_err(iret)
+
+            iret = nf90_put_att(dat%ncid, dat%nodal_data_id,
+     &             'mesh', 'adcirc_mesh')
+            CALL check_err(iret)
+
+C END DW                 
+         CASE(164)          
 C
             dat%varnames(1) = 'radstress_x'
             dat%varnames(2) = 'radstress_y'
@@ -3723,7 +3801,7 @@ C     netcdf4 file format.
             iret = nf90_def_var_deflate(dat%ncid, dat%w_nodal_data_id,
      &             1, 1, 2)
             CALL check_err(iret)
-         CASE(47,63,73,77,90,93,173,301:304,306,307,402,403,108) ! GML added 93 20210727
+         CASE(47,63,73,77,90,93,173,301:304,306,307,402,403,108,903) ! GML added 93 20210727
             iret = nf90_def_var_deflate(dat%ncid, dat%nodal_data_id,
      &             1, 1, 2)
             CALL check_err(iret)
@@ -4324,6 +4402,12 @@ C++ GML 20200528
          CASE(93)
             CALL writeNodalData(CICEAF, lun, descript1, timesec)
 C++
+         CASE(901)    
+            CALL writeStationData(RainSta, lun, descript1, timesec)
+         CASE(903)
+            CALL writeNodalData(RainFallRate, lun, descript1, timesec)
+C END DW
+
          CASE(173)
             CALL writeNodalData(wDrag, lun, descript1, timesec)
          CASE(77)
@@ -4711,6 +4795,18 @@ C++ GML 20200605
          ENDIF
          CALL check_err(iret)
 C++
+      CASE (901)     
+         iret=nf90_inq_varid(sta%ncid, "Applied_rainfall", sta%station_data_id)
+         CALL check_err(iret)
+         IF (MNPROC.eq.1) THEN
+            iret = nf90_put_var(sta%ncid, sta%station_data_id,
+     &          descript1%array, start, kount)
+         ELSE
+            iret = nf90_put_var(sta%ncid, sta%station_data_id,
+     &          descript1%array_g, start, kount)
+         ENDIF
+         CALL check_err(iret)
+
 
       CASE(109)
          iret=nf90_inq_varid(sta%ncid, "dynamicWaterlevelCorrection", sta%station_data_id)
@@ -4898,6 +4994,10 @@ C++ GML 20200528
          iret=nf90_inq_varid(dat%ncid,"iceaf",dat%nodal_data_id)
          CALL check_err(iret)
 C++
+      CASE(903)    ! DW
+         iret=nf90_inq_varid(dat%ncid,"rainfallrate",dat%nodal_data_id)
+         CALL check_err(iret)
+
       CASE(173)
          iret=nf90_inq_varid(dat%ncid, "winddrag", dat%nodal_data_id)
          CALL check_err(iret)
@@ -5194,7 +5294,7 @@ C     Write the array values
      &            descript1%array_g)
             CALL check_err(iret)
          ENDIF
-      CASE(47,63,73,77,90,93,173,301,302,303,304,306,307,108) ! GML added 93 20210727
+      CASE(47,63,73,77,90,93,173,301,302,303,304,306,307,108,903) ! GML added 93 20210727
          IF (MNPROC.eq.1) THEN ! SERIAL
             IF ( descript1%ConsiderWetDry.eqv..TRUE.) THEN
                allocate(tempArray(1:dat%myMesh%num_nodes))

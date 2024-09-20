@@ -2499,7 +2499,7 @@ C
 
       IF ((NCRAIN.NE.0).AND.
      &   (NCRAIN.NE.2).AND.(NCRAIN.NE.12).AND.
-     &   (NCRAIN.NE.-12)) THEN
+     &   (NCRAIN.NE.-12).AND.(NCRAIN.NE.14)) THEN
          IF (NSCREEN.NE.0.AND.MYPROC.EQ.0) THEN
            WRITE(ScreenUnit,9972)
            WRITE(ScreenUnit,*) 'NCRAIN =', NCRAIN
@@ -2548,6 +2548,21 @@ C
      &   /,9X,'FOR A HOT START, THE UNIT 425 AND/OR 427 ',
      &   /,9X,'FILES BEGIN AT THE TIME OF THE HOT START.')
       END IF
+
+      IF (ABS(NCRAIN).EQ.14) THEN
+        WRITE(16,3303) NCRAIN
+ 3303   FORMAT(/5X,'NCRAIN = ',I3,
+     &   /,9X,'RAINFALL VALUES ARE USED IN ',
+     &   /,9X,'THE GWC EQUATION ',
+     &   /,9X,'RAINFALL VALUES ARE READ FROM NETCDF ',
+     &   /,9X,'RAINFALL DATA FILES fort.290.nc in kgm-2s-1.',
+     &   /,9X,'AND ARE CONVERTED TO ms-1.',
+     &   /,9X,'FOR A COLD START, THE fort.290.nc ',
+     &   /,9X,'FILE BEGIN AT THE TIME OF THE COLD START. ',
+     &   /,9X,'FOR A HOT START, THE fort.290.nc ',
+     &   /,9X,'FILE BEGIN AT THE TIME OF THE HOT START.')
+      END IF
+
 C
 C---------------------END PRECIPITATION SOURCE TERM----------------------C
 C

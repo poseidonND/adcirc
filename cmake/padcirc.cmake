@@ -66,7 +66,8 @@ if(BUILD_PADCIRC)
       ${CMAKE_CURRENT_SOURCE_DIR}/src/subgridLookup.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/river.F
       ${CMAKE_CURRENT_SOURCE_DIR}/src/owi_rain.F
-      ${CMAKE_CURRENT_SOURCE_DIR}/src/synthesis.F90)
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/synthesis.F90
+      ${CMAKE_CURRENT_SOURCE_DIR}/src/rain_netcdf.F)
   if(NETCDF_WORKING)
     set(PADCIRC_SOURCES
         ${PADCIRC_SOURCES}

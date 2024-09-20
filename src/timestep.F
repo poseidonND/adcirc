@@ -117,6 +117,7 @@ C.... TCM V49.64.01 ADDITIONS FOR ICE
 C...  kmd-v53 add for precipitation forcing
       USE OWI_RAIN,    ONLY: NCRAIN1_INIT,NCRAIN_GET
       USE READ_RIVER, ONLY : CONVERT_QN, FORMULATE_QFORCE
+      USE NETCDF_RAIN, ONLY : NETCDFRAIN_INIT, NETCDFRAIN_GET
 C.....sb46.28sb03 added 09/xx/2006
       USE RS2,ONLY : RS2INIT,RS2GET
       USE NodalAttributes, ONLY : 
@@ -723,6 +724,18 @@ C     cms: v55 simplified logic
             CALL NCRAIN_GET(RAIN2,NP)
           ENDIF
       ENDIF
+
+      IF (ABS(NCRAIN).EQ.14) THEN
+         IF(TimeLoc.GT.CRAIN_TIME2) THEN
+            CRAIN_TIME1 = CRAIN_TIME2
+            CRAIN_TIME2 = CRAIN_TIME2 + CRAIN_TIMINC
+            DO I=1,NP
+              RAIN1(I) = RAIN2(I)
+            END DO
+            CALL NETCDFRAIN_GET(RAIN2,NP)
+          ENDIF
+      ENDIF
+
 
       IF (NCRAIN.NE.0) THEN
          CRAIN_Ratio = (TimeLoc-CRAIN_TIME1)/CRAIN_TIMINC

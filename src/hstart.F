@@ -81,6 +81,10 @@ C
       USE WIND, ONLY : hotstartMeteorologicalForcing, rsget
       USE OWI_ICE, ONLY : NCICE1_INIT, NCICE1_GET  !tcm v49.64.01
       USE OWI_RAIN, ONLY : NCRAIN1_INIT, NCRAIN_GET  !kmd v55
+      USE NETCDF_RAIN, ONLY : NETCDFRAIN_INIT, NETCDFRAIN_GET ! AT v56
+      USE READ_RIVER, ONLY: CONVERT_QN, FORMULATE_QFORCE, INIT_RIVER
+
+
       USE RS2,ONLY : RS2INIT,RS2GET           ! sb46.28sb01 added 09/xx/2006
 C     Addition for netCDF by MCF 5/18/08 modified by jgf49.28
 #ifdef ADCNETCDF
@@ -967,7 +971,23 @@ C......FILE IF IT IS REQUIRED
                 READ(20,*) QNIN2(J), ENIN2(J)
             ENDIF
          END DO
-
+            CALL INIT_RIVER
+            CALL CONVERT_QN(QNIN1, QNIN2) !AT 2023
+            CALL FORMULATE_QFORCE(QN_R,QN2_R) !Correction for Rivers
+            DO J=1,NVEL
+                 QNIN1(J) = 0.D0
+              IF ((LBCODEI(J).EQ.2).OR.(LBCODEI(J).EQ.12)
+     &               .OR.(LBCODEI(J).EQ.22).OR.(LBCODEI(J).EQ.32)) THEN
+                     QNIN1(J) = QN_R(J)
+              ENDIF
+            END DO
+            DO J=1,NVEL
+                  QNIN2(J)=0.D0
+              IF ((LBCODEI(J).EQ.2).OR.(LBCODEI(J).EQ.12)
+     &               .OR.(LBCODEI(J).EQ.22).OR.(LBCODEI(J).EQ.32)) THEN
+                     QNIN2(J) = QN2_R(J)
+              ENDIF
+            END DO
          DO IT=1,ITHS-1
             TIMEIT=IT*DTDPHS + STATIM*86400.D0 ! kmd48.33bc - changed DTDP to DTDPHS
             IF(TIMEIT.GT.QTIME2) THEN
@@ -987,6 +1007,7 @@ C......FILE IF IT IS REQUIRED
             ENDIF
          END DO
 
+
          QTRATIO=(TIMEIT-QTIME1)/FTIMINC
          QN1=RampExtFlux1*(QNIN1+QTRATIO*(QNIN2-QNIN1))
          EN1=RampExtFlux1*(ENIN1+QTRATIO*(ENIN2-ENIN1))
@@ -1005,6 +1026,7 @@ C......FILE IF IT IS REQUIRED
                   READ(20,*) QNIN2(J), ENIN2(J)
                ENDIF
             END DO
+          
          ENDIF
 
          QTRATIO=(TimeLoc-QTIME1)/FTIMINC
@@ -1042,6 +1064,24 @@ C......FILE IF IT IS REQUIRED
                 READ(20,*) QNIN2(J), ENIN2(J)
             ENDIF
          END DO
+            CALL INIT_RIVER
+            CALL CONVERT_QN(QNIN1, QNIN2) !AT 2023
+            CALL FORMULATE_QFORCE(QN_R,QN2_R) !Correction for Rivers
+            DO J=1,NVEL
+                 QNIN1(J) = 0.D0
+             IF ((LBCODEI(J).EQ.2).OR.(LBCODEI(J).EQ.12)
+     &               .OR.(LBCODEI(J).EQ.22).OR.(LBCODEI(J).EQ.32)) THEN
+                     QNIN1(J) = QN_R(J)
+             ENDIF
+            END DO
+            DO J=1,NVEL
+                  QNIN2(J)=0.D0
+             IF ((LBCODEI(J).EQ.2).OR.(LBCODEI(J).EQ.12)
+     &               .OR.(LBCODEI(J).EQ.22).OR.(LBCODEI(J).EQ.32)) THEN
+                     QNIN2(J) = QN2_R(J)
+             ENDIF
+            END DO
+
          QTRATIO=(TIMELOC-QTIME1)/FTIMINC
          QN1=RampExtFlux1*(QNIN1+QTRATIO*(QNIN2-QNIN1))
          EN1=RampExtFlux1*(ENIN1+QTRATIO*(ENIN2-ENIN1))
@@ -1557,6 +1597,28 @@ C.. added this section for reading in information
             RainfallCurr(I) = RAIN1(I)
           END DO
         END IF
+!Adding NETCDF RAIN option (Aman)
+        IF (NCRAIN.EQ.14) THEN
+          CRAIN_TIME1 = STATIM*86400.D0
+          CRAIN_TIME2 = CRAIN_TIME1 + CRAIN_TIMINC
+          CALL NETCDFRAIN_INIT()
+          CALL NETCDFRAIN_GET(RAIN1,NP)
+          CALL NETCDFRAIN_GET(RAIN2,NP)
+          DO IT=1,ITHS
+            TIMEIT=IT*DTDP + STATIM*86400.D0
+            IF (TIMEIT.GT.CRAIN_TIME2) THEN
+              CRAIN_TIME1 = CRAIN_TIME2
+              CRAIN_TIME2 = CRAIN_TIME2 + CRAIN_TIMINC
+              DO I=1,NP
+                RAIN1(I)=RAIN2(I)
+              END DO
+              CALL NETCDFRAIN_GET(RAIN2,NP)
+            END IF
+          END DO
+          DO I=1,NP
+            RainfallCurr(I) = RAIN1(I)
+          END DO
+        END IF
 
       END IF
 C
@@ -1892,7 +1954,7 @@ C...
 
       IF(NOUTE.LT.0) THEN
         IESTP=0
-        IRAINSTP=0  !v55. cms added precipitation station
+        IRAINSTP=0   !v55. cms added precipitation station
         NSCOUE=0
         IF((NTCYSE.LT.ITHS).AND.(NSPOOLE.GT.0)) THEN
           NTCYSE=NTCYSE+((REAL(ITHS)-REAL(NTCYSE))/
@@ -1906,27 +1968,30 @@ C...
       IF(NOUTE.EQ.-2) THEN
         OPEN(61,FILE=TRIM(LOCALDIR)//'/'//'fort.61',
      &                      ACCESS='DIRECT',RECL=NBYTE)
-C       v55. cms added precipitation station
+C       v55. cms added precipitation station, DW change from 94 to 901
+C       for consistency in naming
         IF(NCRAIN.NE.0) THEN
-           OPEN(94,FILE=TRIM(LOCALDIR)//'/'//'fort.94',
+C           OPEN(94,FILE=TRIM(LOCALDIR)//'/'//'fort.94',
+C     &                      ACCESS='DIRECT',RECL=NBYTE)
+           OPEN(901,FILE=TRIM(LOCALDIR)//'/'//'fort.901',
      &                      ACCESS='DIRECT',RECL=NBYTE)
         ENDIF
         IF(NBYTE.EQ.4) THEN
           DO I=1,8
             WRITE(61,REC=IESTP+I) RDES4(I)
-            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) RDES4(I)
+            IF(NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) RDES4(I)
           ENDDO
           IESTP=IESTP+8
           IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+8
           DO I=1,6
             WRITE(61,REC=IESTP+I) RID4(I)
-            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) RID4(I)
+            IF(NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) RID4(I)
           ENDDO
           IESTP=IESTP+6
           IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+6
           DO I=1,6
             WRITE(61,REC=IESTP+I) AID4(I)
-            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) AID4(I)
+            IF(NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) AID4(I)
           ENDDO
           IESTP=IESTP+6
           IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+6
@@ -1934,20 +1999,20 @@ C       v55. cms added precipitation station
         IF(NBYTE.EQ.8) THEN
           DO I=1,4
             WRITE(61,REC=IESTP+I) RDES8(I)
-            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) RDES8(I)
+            IF(NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) RDES8(I)
           ENDDO
           IESTP=IESTP+4
           IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+4
           DO I=1,3
             WRITE(61,REC=IESTP+I) RID8(I)
-            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) RID8(I)
+            IF(NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) RID8(I)
 
           ENDDO
           IESTP=IESTP+3
           IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+3
           DO I=1,3
             WRITE(61,REC=IESTP+I) AID8(I)
-            IF(NCRAIN.NE.0) WRITE(94,REC=IRAINSTP+I) AID8(I)
+            IF(NCRAIN.NE.0) WRITE(901,REC=IRAINSTP+I) AID8(I)
           ENDDO
           IESTP=IESTP+3
           IF(NCRAIN.NE.0) IRAINSTP=IRAINSTP+3
@@ -1960,21 +2025,21 @@ C       v55. cms added precipitation station
         IESTP=IESTP+5
         CLOSE(61)                    ! DO THIS TO FLUSH THE WRITE BUFFER
         IF(NCRAIN.NE.0) THEN
-           WRITE(94,REC=IRAINSTP+1) NTRSPE
-           WRITE(94,REC=IRAINSTP+2) NSTAE
-           WRITE(94,REC=IRAINSTP+3) DT*NSPOOLE
-           WRITE(94,REC=IRAINSTP+4) NSPOOLE
-           WRITE(94,REC=IRAINSTP+5) 1
+           WRITE(901,REC=IRAINSTP+1) NTRSPE
+           WRITE(901,REC=IRAINSTP+2) NSTAE
+           WRITE(901,REC=IRAINSTP+3) DT*NSPOOLE
+           WRITE(901,REC=IRAINSTP+4) NSPOOLE
+           WRITE(901,REC=IRAINSTP+5) 1
            IRAINSTP=IRAINSTP+5
-           CLOSE(94)                    ! DO THIS TO FLUSH THE WRITE BUFFER
+           CLOSE(901)                 ! DO THIS TO FLUSH THE WRITE BUFFER
         ENDIF
       ENDIF
       IF(NOUTE.EQ.-1) THEN
-         if (write_local_files.eqv..false.) then
+         IF (write_local_files.eqv..false.) then
             CALL OPEN_GBL_FILE(61, TRIM(GLOBALDIR)//'/'//'fort.61',
      $        NSTAE_G, NSTAE, HEADER61)
             IF(NCRAIN.NE.0) THEN
-               CALL OPEN_GBL_FILE(94, TRIM(GLOBALDIR)//'/'//'fort.94',
+               CALL OPEN_GBL_FILE(901, TRIM(GLOBALDIR)//'/'//'fort.901',
      $            NSTAE_G, NSTAE, HEADER61)
             ENDIF
 
@@ -1982,12 +2047,12 @@ C       v55. cms added precipitation station
             CALL OPEN_GBL_FILE(61, TRIM(LOCALDIR)//'/'//'fort.61',
      $        NSTAE_G, NSTAE, HEADER61)
             IF(NCRAIN.NE.0) THEN
-               CALL OPEN_GBL_FILE(94, TRIM(LOCALDIR)//'/'//'fort.94',
+               CALL OPEN_GBL_FILE(901, TRIM(LOCALDIR)//'/'//'fort.901',
      $           NSTAE_G, NSTAE, HEADER61)
             ENDIF
          ENDIF
          IESTP=2
-         IRAINSTP=2        
+         IRAINSTP=2
       ENDIF
 
       IF(NOUTE.EQ.2) THEN
@@ -1997,9 +2062,9 @@ c       WRITE(61,REC=ITEMPSTP+1) NTRSPE   ! ALLOW ADDITIONAL OUTPUT DATA TO BE W
         CLOSE(61)                         ! DO THIS TO FLUSH THE WRITE BUFFER
 C       v55. cms added precipitation station support
         IF(NCRAIN.NE.0) THEN
-           OPEN(94,FILE=TRIM(LOCALDIR)//'/'//'fort.94',
+           OPEN(901,FILE=TRIM(LOCALDIR)//'/'//'fort.901',
      &                      ACCESS='DIRECT',RECL=NBYTE)
-           CLOSE(94)
+           CLOSE(901)
         ENDIF
       ENDIF
 
@@ -3159,55 +3224,57 @@ C...
         END IF
 
         IF ((NCRAIN.NE.0).AND.(NOUTGE.EQ.-2)) THEN
-          OPEN(94,FILE=TRIM(LOCALDIR)//'/'//'fort.94',
+          OPEN(903,FILE=TRIM(LOCALDIR)//'/'//'for.903',
      &        ACCESS='DIRECT',RECL=NBYTE)
           IF(NBYTE.EQ.4) THEN
              DO I=1,8
-               WRITE(94,REC=IGRP+I) RDES4(I)
+               WRITE(903,REC=IGRP+I) RDES4(I)
              END DO
              IGRP=IGRP+8
              DO I=1,6
-               WRITE(94,REC=IGRP+I) RID4(I)
+               WRITE(903,REC=IGRP+I) RID4(I)
              END DO
              IGRP=IGRP+6
              DO I=1,6
-               WRITE(94,REC=IGRP+I) AID4(I)
+               WRITE(903,REC=IGRP+I) AID4(I)
              END DO
              IGRP=IGRP+6
            END IF
            IF (NBYTE.EQ.8) THEN
              DO I=1,4
-               WRITE(94,REC=IGRP+I) RDES8(I)
+               WRITE(903,REC=IGRP+I) RDES8(I)
              END DO
              IGRP=IGRP+4
              DO I=1,3
-               WRITE(94,REC=IGRP+I) RID8(I)
+               WRITE(903,REC=IGRP+I) RID8(I)
              END DO
              IGRP=IGRP+3
              DO I=1,3
-               WRITE(94,REC=IGRP+I) AID8(I)
+               WRITE(903,REC=IGRP+I) AID8(I)
              END DO
              IGRP=IGRP+3
            END IF
-           WRITE(94,REC=IGRP+1) NDSETSE
-           WRITE(94,REC=IGRP+1) NP
-           WRITE(94,REC=IGRP+1) DT*NSPOOLGE
-           WRITE(94,REC=IGRP+1) NSPOOLGE
-           WRITE(94,REC=IGRP+1) 1
+           WRITE(903,REC=IGRP+1) NDSETSE
+           WRITE(903,REC=IGRP+1) NP
+           WRITE(903,REC=IGRP+1) DT*NSPOOLGE
+           WRITE(903,REC=IGRP+1) NSPOOLGE
+           WRITE(903,REC=IGRP+1) 1
            IGRP=IGRP+5
-           CLOSE(94)
+           CLOSE(903)
         END IF
 
         IF ((NCRAIN.NE.0).AND.
      &     ((NOUTGE.EQ.-1).OR.(NOUTGE.EQ.-4))) THEN
-            CALL OPEN_GBL_FILE(94,TRIM(GLOBALDIR)//'/'//'fort.94',
-     $          NP_G, NP, HEADER63)
+            CALL OPEN_GBL_FILE(903,TRIM(GLOBALDIR)//'/'//'fort.903',
+     $          NP_G, NP, HEADER63) ! changed from fort.94 to fort.903
+                                    ! for consistency in nameing
+                                    ! conventiion
             IGRP=2
          END IF
          IF ((NCRAIN.NE.0).AND.(NOUTGE.EQ.2)) THEN
-           OPEN(94,FILE=TRIM(LOCALDIR)//'/'//'fort.94',
+           OPEN(903,FILE=TRIM(LOCALDIR)//'/'//'fort.903',
      &        ACCESS='DIRECT',RECL=NBYTE)
-           CLOSE(94)
+           CLOSE(903)
          END IF
 C--------------END RAINFALL INFORMATION-------------------------
 

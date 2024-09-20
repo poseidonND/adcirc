@@ -282,7 +282,7 @@ C.. v55 - kmd - added for rainfall
       LOGICAL :: FOUND_rainCon_NML = .FALSE.
       INTEGER :: NCRAIN, DYNRAIN !MTC
       REAL(8) :: CRAIN_TIMINC
-      NAMELIST /rainfallcontrol/ NCRAIN, CRAIN_TIMINC, DYNRAIN !MTC
+      NAMELIST /rainfallcontrol/ NCRAIN, CRAIN_TIMINC !MTC
 
 C.. v55 - kmd - added for point source information
       LOGICAL :: FOUND_psCon_NML = .FALSE.
