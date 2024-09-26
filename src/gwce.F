@@ -254,7 +254,7 @@ C
      &   usingDynamicWaterLevelCorrection, dynamicWaterLevelCorrection1,
      &   dynamicWaterLevelCorrectionDelta, 
      &   COEFDTemp, COEFDTempMem,  ! Added for VED1D  08-11-2022 SB
-     &   RainfallCurr, RainODT, totalrain, PSCurr, PSODT,
+     &   RainfallCurr, RainODT, totalrain, PSCurr, PSODT, ApplyOverland,
      &   NCRAIN, NCPSOURCE, CPS_RAMP ! kmd-v53 -- added for precipitation and point source terms
 #ifdef CMPI
      &    , dumy1, dumy2, rnp_global
@@ -306,7 +306,7 @@ C... SB
       INTEGER NCyc
       INTEGER NBDI
       INTEGER OnDiag, OffDiag
-
+      INTEGER Int_ApplyOverland
       LOGICAL  DIE
       REAL(8) A00pB00
       REAL(8) BCXAvg, BCYAvg
@@ -1206,6 +1206,16 @@ C
 C...kmd -v53 -- added precipitation source term
 C        use nodecode to zero out for dry areas
          IF(NCRAIN .NE. 0) THEN
+            IF(ApplyOverland.EQ..TRUE.) THEN
+                Int_ApplyOverland = 0     
+                IN1=RainfallCurr(NM1)
+                ISN1=RainODT(NM1)
+                IN2=RainfallCurr(NM2)
+                ISN2=RainODT(NM2)
+                IN3=RainfallCurr(NM3)
+                ISN3=RainODT(NM3)
+            ELSE 
+            INt_ApplyOverland = 1  
             rdpflag = NC1*merge( 1.0D0, 0.0D0, DP(NM1) > 0.D0 ) ;    
             IN1=RainfallCurr(NM1)*rdpflag !MTC/DW Corrected
             ISN1=RainODT(NM1)*rdpflag 
@@ -1217,7 +1227,7 @@ C        use nodecode to zero out for dry areas
             rdpflag = NC3*merge( 1.0D0, 0.0D0, DP(NM3) > 0.D0 ) ; 
             IN3=RainfallCurr(NM3)*rdpflag
             ISN3=RainODT(NM3)*rdpflag 
-           
+           END IF 
 
          ELSE
             IN1=0.D0
@@ -1599,8 +1609,9 @@ C..... END DW
 C
 C...     kmd-v53 -- Precipitation: time derivative and G terms
 C     &       +AREAIE3*(ISN1+Tau0Avg*IN1)
-     &         +AREAIE3*SPM1*(ISN1+Tau0Avg*IN1) !DW made compatible with GWCE used in v55
-C
+         
+     &         +AREAIE3*SPM1*(ISN1+Tau0Avg*IN1)*Int_ApplyOverland !DW made compatible with GWCE used in v55
+         
 C...     kmd-v53 -- Point source: time derivative and G terms
 C     &       +AREAIE3*(PSSN1+Tau0Avg*PSN1)
      &         +AREAIE3*SPM1*(PSSN1+Tau0Avg*PSN1) ! DW changed to make it compatible with v55
@@ -1634,8 +1645,9 @@ C
 C...     kmd-v53 -- Precipitation: time derivative and G terms: made
 C                   compatible with GWCE in v55
 C     &       +AREAIE3*(ISN2+Tau0Avg*IN2)
-     &       +AREAIE3*SPM2*(ISN2+Tau0Avg*IN2)
-
+         
+     &       +AREAIE3*SPM2*(ISN2+Tau0Avg*IN2)*Int_ApplyOverland
+         
 C
 C...     kmd-v53 -- Point source: time derivative and G terms
 C     &       +AREAIE3*(PSSN2+Tau0Avg*PSN2)
@@ -1670,8 +1682,9 @@ C
 C...     kmd-v53 -- Precipitation: time derivative and G terms: DW -
 C                   compatible with v55
 C     &       +AREAIE3*(ISN3+Tau0Avg*IN3)
-     &       +AREAIE3*SPM3*(ISN3+Tau0Avg*IN3)
-
+           
+     &       +AREAIE3*SPM3*(ISN3+Tau0Avg*IN3)*Int_ApplyOverland
+           
 C
 C...     kmd-v53 -- Point source: time derivative and G terms
 C     &       +AREAIE3*(PSSN3+Tau0Avg*PSN3)

@@ -87,7 +87,7 @@ C  kmd v53 -- added for precipitation and point source forcing
      &    RainfallCurr,RainfallOld,RainODT,totalrain,totalrainapp,
      &    NCPSOURCE,CPS_TIMINC,CPS_TIME1,CPS_TIME2,PS1,PS2,PSCurr,PSOld,
      &    PSODT,CPS_RAMP,DivByTotalArea,nearNode,dt, QN_R, QN2_R,
-     &    Limit_WaveStressGrad,U_Syn, V_Syn,
+     &    Limit_WaveStressGrad,U_Syn, V_Syn, ApplyOverland,
      &    earlyterminate, IT_foundNaN, WarnVel, Flag_VelError,
      &    dynamicWaterLevelCorrectionDelta
       USE ADC_CONSTANTS, ONLY: rhoWat0, sigT0, waveWindMultiplier,
@@ -616,7 +616,7 @@ C     2DDI.Set up the 2D friction coefficient
          IF (CBaroclinic) THEN
             
 
-            CALL PROCESS_UVTidalSynthesis(U_Syn,V_Syn,TimeLoc)
+            CALL PROCESS_UVTidalSynthesis(U_Syn,V_Syn,IT)
           !  UV_out = TRIM(LOCALDIR)//'/'//'UV_out.txt'
           !  UV_adc = TRIM(LOCALDIR)//'/'//'UV_adc.txt'
           !  IF(IT.EQ.2) THEN
@@ -1254,7 +1254,14 @@ C...  Compute new water surface elevation
       call solveGWCE(it, ITIME_BGN, timeloc, timeh)
 
 !---------------------END SOLVE GWCE------------------------------------
+!---------------TAKING FRACTIONAL STEP APPROACH FOR RAIN ON GRID--------
 
+!Aman/DW 2024 :: apply rain on mesh      
+      IF(ApplyOverLand) THEN
+        DO I=1,NP
+         ETA2(I) = ETA1(I) + DTDP * (0.5*(RainfallCurr(I) + RainfallOld(I)))
+        ENDDO
+      ENDIF
 !JLW: adding subgrid
       IF(level0)THEN
 #ifdef ADCNETCDF

@@ -280,9 +280,10 @@ c.... tcm v50.66.02 added for time varying bathymetry
 
 C.. v55 - kmd - added for rainfall
       LOGICAL :: FOUND_rainCon_NML = .FALSE.
+      LOGICAL :: ApplyOverland = .FALSE.
       INTEGER :: NCRAIN, DYNRAIN !MTC
       REAL(8) :: CRAIN_TIMINC
-      NAMELIST /rainfallcontrol/ NCRAIN, CRAIN_TIMINC !MTC
+      NAMELIST /rainfallcontrol/ NCRAIN, CRAIN_TIMINC, ApplyOverland !MTC
 
 C.. v55 - kmd - added for point source information
       LOGICAL :: FOUND_psCon_NML = .FALSE.

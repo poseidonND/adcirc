@@ -33,7 +33,7 @@ MODULE synthesis
 #ifdef ADCNETCDF              
        USE NETCDF   
 #endif     
-       USE GLOBAL, ONLY: U_AMP_GL2LOC, V_AMP_GL2LOC,U_PHS_GL2LOC, V_PHS_GL2LOC
+       USE GLOBAL, ONLY: U_AMP_GL2LOC, V_AMP_GL2LOC,U_PHS_GL2LOC,V_PHS_GL2LOC, NT_aman
        USE MESSENGER, ONLY : MYPROC 
        USE SIZES, ONLY : MNP 
        IMPLICIT NONE
@@ -42,7 +42,7 @@ MODULE synthesis
        REAL(8), DIMENSION(:), ALLOCATABLE :: V_AMP, V_AMP_LOCAL
        REAL(8), DIMENSION(:), ALLOCATABLE :: U_PHS, U_PHS_LOCAL
        REAL(8), DIMENSION(:), ALLOCATABLE :: V_PHS, V_PHS_LOCAL
-       REAL(8), ALLOCATABLE :: FFT(:), FACET(:)
+!       REAL(8), ALLOCATABLE :: FFT(:), FACET(:)
        CHARACTER(10) :: CON_NAME
        CHARACTER(10), DIMENSION(:), ALLOCATABLE :: CONST
        CHARACTER(10) :: tempname
@@ -51,11 +51,9 @@ MODULE synthesis
        INTEGER, INTENT(IN) :: CONID
        INTEGER :: NODEID, LEN_CONST, LEN_NODE, CONST_ID
        INTEGER :: NCID, VARID, RETVAL, I
-       INTEGER, SAVE :: NT_aman
-       !INTEGER, INTENT(IN) :: TimeStep
        
-
-       NT_aman = 1;     
+       !INTEGER, INTENT(IN) :: TimeStep
+           
 
        retval = nf90_open(F_NAME, NF90_NOWRITE, ncid)
        if (retval /= nf90_noerr) then
@@ -79,7 +77,7 @@ MODULE synthesis
        ALLOCATE(U_PHS(LEN_NODE),U_PHS_LOCAL(MNP))
        ALLOCATE(V_PHS(LEN_NODE),V_PHS_LOCAL(MNP))
        ALLOCATE(CONST(LEN_CONST))
-       ALLOCATE(FFT(LEN_CONST), FACET(LEN_CONST))
+!       ALLOCATE(FFT(LEN_CONST), FACET(LEN_CONST))
         
        retval = nf90_inq_varid(ncid, 'const', varid)
        if (retval /= nf90_noerr) then
@@ -165,39 +163,39 @@ MODULE synthesis
        end if
 
 
-       retval = nf90_inq_varid(ncid, 'nodal_factor', varid)
-       if (retval /= nf90_noerr) then
-        print *, "Error getting variable ID for nodal_factor:", trim(nf90_strerror(retval))
-        stop
-       end if 
+!       retval = nf90_inq_varid(ncid, 'nodal_factor', varid)
+!       if (retval /= nf90_noerr) then
+!        print *, "Error getting variable ID for nodal_factor:", trim(nf90_strerror(retval))
+!        stop
+!       end if 
 
-       retval = nf90_get_var(ncid, varid, FFT) 
+!       retval = nf90_get_var(ncid, varid, FFT) 
 
-       if (retval /= nf90_noerr) then
-         print *, "Error reading FFT data:", trim(nf90_strerror(retval))
-         stop
-       end if
+!       if (retval /= nf90_noerr) then
+!         print *, "Error reading FFT data:", trim(nf90_strerror(retval))
+!         stop
+!       end if
 
-       retval = nf90_inq_varid(ncid, 'equilibrium_argument', varid)
-       if (retval /= nf90_noerr) then
-        print *, "Error getting variable ID for equi argument:", trim(nf90_strerror(retval))
-        stop
-       end if 
+!       retval = nf90_inq_varid(ncid, 'equilibrium_argument', varid)
+!       if (retval /= nf90_noerr) then
+!        print *, "Error getting variable ID for equi argument:", trim(nf90_strerror(retval))
+!        stop
+!       end if 
 
-       retval = nf90_get_var(ncid, varid, FACET) 
+!       retval = nf90_get_var(ncid, varid, FACET) 
 
-       if (retval /= nf90_noerr) then
-         print *, "Error reading FACET data:", trim(nf90_strerror(retval))
-         stop
-       end if
+!       if (retval /= nf90_noerr) then
+!         print *, "Error reading FACET data:", trim(nf90_strerror(retval))
+!         stop
+!       end if
 
        
        CALL MAP_UV_LOCAL(U_AMP, V_AMP, U_PHS, V_PHS, U_AMP_LOCAL, V_AMP_LOCAL, U_PHS_LOCAL, V_PHS_LOCAL,NT_aman)
        
         NT_aman = NT_aman + 1;
-        ! IF(MYPROC.EQ.0) THEN
-      !            print *, " I have crossed calling map_uv_local"
-       !  ENDIF 
+        IF(MYPROC.EQ.0) THEN
+                  print *, "NT_aman:", NT_aman
+        END IF 
 
       END SUBROUTINE ReadUVSynthesisNC   
 
@@ -253,7 +251,7 @@ MODULE synthesis
       REAL(8), INTENT(OUT) :: U_Syn(:), V_Syn(:)
       REAL(8),DIMENSION(8) :: OMEGA_CONST
       INTEGER :: K, J
-      REAL(8), INTENT(IN) :: TimeStep
+      INTEGER, INTENT(IN) :: TimeStep
       CHARACTER(10), DIMENSION(8) :: CONST8_NAME 
       CHARACTER(20) :: FNAME = 'synthesis.nc'
       INTEGER,DIMENSION(8) :: CONID
@@ -267,7 +265,7 @@ MODULE synthesis
              6.759774407e-05,7.252294576e-05,7.292115851e-05,1.378796998e-04,1.458423170e-04 /)  
       !ALLOCATE(U_Syn(NP), V_Syn(NP))
       CONID = (/ 11,12,6,7,8,9,10,13 /)
-      
+       
          !IF(MYPROC.EQ.0) THEN
          !         print *, " I am at Timestep:", TimeStep
          ! ENDIF 
@@ -282,14 +280,18 @@ MODULE synthesis
       DO K = 1,8
        IF(TimeStep.EQ.1) THEN
             call ReadUVSynthesisNC(FNAME, CONID(K))
+            IF (MYPROC.EQ.0) THEN 
+                print *, "FACET:", FACET(CONID(K)-1)
+                print *, "FFT:", FFT(CONID(K)-1)
+            END IF     
 
-      ENDIF
+      END IF
           
           DO J = 1, NP
              ! -1 as one of the constituents is steady in fort.54.nc
 
-             U_Syn(J) = U_Syn(J) + RampTIP*U_AMP_GL2LOC(J,K)*FFT(CONID(K)-1)*COS((OMEGA_CONST(K))*TimeStep - U_PHS_GL2LOC(J,K) + FACET(CONID(K)-1))
-             V_Syn(J) = V_Syn(J) + RampTIP*V_AMP_GL2LOC(J,K)*FFT(CONID(K)-1)*COS((OMEGA_CONST(K))*TimeStep - V_PHS_GL2LOC(J,K) + FACET(CONID(K)-1))
+             U_Syn(J) = U_Syn(J) + U_AMP_GL2LOC(J,K)*FFT(CONID(K)-1)*COS(OMEGA_CONST(K)*(TimeStep*DTDP) - U_PHS_GL2LOC(J,K)*deg2rad + FACET(CONID(K)-1))
+             V_Syn(J) = V_Syn(J) + V_AMP_GL2LOC(J,K)*FFT(CONID(K)-1)*COS(OMEGA_CONST(K)*(TimeStep*DTDP) - V_PHS_GL2LOC(J,K)*deg2rad + FACET(CONID(K)-1))
 
           END DO
       END DO

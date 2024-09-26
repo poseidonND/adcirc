@@ -576,7 +576,8 @@ C..v55 - kmd - additions for rainfall namelist control
       INTEGER :: IOS_RAIN
       REAL(8) :: CRAIN_TIMINC
       LOGICAL :: FOUND_raincon_NML = .FALSE.
-      NAMELIST /rainfallcontrol/ NCRAIN, CRAIN_TIMINC !MTC
+      LOGICAL :: ApplyOverland = .FALSE.
+      NAMELIST /rainfallcontrol/ NCRAIN, CRAIN_TIMINC, ApplyOverland !MTC
 
 C..v55 - kmd - additions for point source namelist control
       INTEGER :: NCPSOURCE

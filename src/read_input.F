@@ -84,7 +84,7 @@ C-----------------------------------------------------------------------
      &   StatPartWetFix, How2FixStatPartWet, cgwce_hdp, ifnl_hdp, 
      &   CAliDisp, IFSFM, usingDynamicWaterLevelCorrection,slim,windlim,
      &   directvelWD,useHF,Limit_WaveStressGrad, directvelWD,useHF, 
-     &   WarnVel,toLowerCase,
+     &   WarnVel,toLowerCase,ApplyOverland,
      &   NCRAIN, CRAIN_TIMINC, NCPSOURCE, CPS_TIMINC, CPS_RAMP, !kmd-v53 -- added for precipitation and point source
      &   alloc_main15a, alloc_main15b !kmd-v53 -- added for precipitation and point source
     
@@ -302,7 +302,7 @@ Casey 121019: Added multiplication factor to be used before sending winds to cou
      &         Limit_WaveStressGrad, WaveStressGrad_Cap
 
 C... kmd-v53 -- added for precipitation and point source control
-      NAMELIST /rainfallcontrol/ NCRAIN, CRAIN_TIMINC
+      NAMELIST /rainfallcontrol/ NCRAIN, CRAIN_TIMINC, ApplyOverland
       NAMELIST /psourcecontrol/ NCPSOURCE, CPS_TIMINC, CPS_RAMP
       INTEGER :: ios_ps, ps_unit
 

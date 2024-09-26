@@ -53,7 +53,7 @@ C
      &    ntrspv, iicestp, nstam_g, nstam, openfileforread, cbaroclinic,
      &    ncrain, crain_time1, crain_time2, crain_timinc, rain1, rain2,
      &    rainodt, rainfallcurr, irainstp, igrp,QN_R, QN2_R, ! AT river
-     &    ncpsource, cps_time1, cps_time2, cps_timinc, cps_ramp,
+     &    ncpsource, cps_time1, cps_time2,cps_timinc,cps_ramp,applyoverland,
      &    ps1, ps2, pscurr, psodt, divbytotalarea, nearnode
 
       USE GLOBAL_3DVS, ONLY: I3DSD, I3DSV, I3DST, I3DGD, I3DGV, I3DGT
@@ -384,7 +384,12 @@ C... Read in the time level 1 and 2
          IF (NSCREEN.NE.0.AND.MYPROC.EQ.0) WRITE(Screenunit,2990)
          WRITE(16,2990)
  2990    FORMAT(/,1X,'RAINFALL INTENSITY INFORMATION READ.',/)
-
+         
+         IF (ApplyOverLand.EQ..TRUE.) THEN
+             IF (NSCREEN.NE.0.AND.MYPROC.EQ.0) WRITE(Screenunit,5769)
+             WRITE(16,5769)
+5769         FORMAT(/,1X,'RAIN ON MESH TURNED ON',/)              
+         END IF
          IF (NCRAIN.EQ.2) THEN
            OPEN(425,FILE=TRIM(INPUTDIR)//'/'//'fort.425')
            READ(425,*) (NHG,RAIN1(I),I=1,NP)

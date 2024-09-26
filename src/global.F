@@ -236,6 +236,9 @@ c.
       INTEGER, ALLOCATABLE ::   IDUMY(:)
       REAL(8),ALLOCATABLE ::   DUMY1(:),DUMY2(:)
 #endif
+!Adding for Usyn Vsyn
+      INTEGER, save :: NT_aman = 1
+
       !jgf50.44: Added variable to record the time that the min or max
       ! has occurred
       REAL(8),ALLOCATABLE, TARGET ::  ETA1(:), ETA2(:), UU2(:), VV2(:), H1(:), H2(:) ! DMW202401 Added variables for tracking flow depths
@@ -734,6 +737,7 @@ C     kmd48.33bc - added variables for 3D boundary conditions
 
 ! KMD v53 Additions for precipitation and point source
       INTEGER :: NCRAIN, NCPSOURCE
+      LOGICAL :: ApplyOverland = .FALSE.
       REAL(8) :: CRAIN_TIMINC, CRAIN_TIME1, CRAIN_TIME2
       REAL(8) :: CPS_TIMINC, CPS_RAMP, CPS_TIME1, CPS_TIME2
 
